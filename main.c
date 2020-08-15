@@ -205,6 +205,24 @@ int input(WINDOW* win, WINDOW* statBar, WINDOW* menuBar)
 	case KEY_F(10):
 		mode = (mode + 1) % NUM_MODES;
 		break;
+	case KEY_F(12):
+	{
+		char answer[64] = { 'y' };
+		if (!file.saved)
+		{
+			wclear(statBar);
+			echo();
+			nocbreak();
+			mvwprintw(statBar, 0, 0, "File was modified. Quit anyway? (y or n) ");
+			wscanw(statBar, "%s", answer);
+			noecho();
+			cbreak();
+			wrefresh(statBar);
+		}
+		if (strcmp(answer, "y") == 0)
+			return 0;
+		break;
+	}
     //save
     case 's':
         saveFile(file.name);
