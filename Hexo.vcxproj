@@ -103,7 +103,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\lua-5.4.0\src;C:\SDL2-2.0.12\include;C:\PDCurses-3.8;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\lua-5.4.0\src;C:\PDCurses-3.8;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>C:\lua-5.4.0\x64\Release;C:\PDCurses-3.8\wincon;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -113,7 +113,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\lua-5.4.0\src;C:\SDL2-2.0.12\include;C:\PDCurses-3.8;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\lua-5.4.0\src;C:\PDCurses-3.8;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>C:\lua-5.4.0\x64\Release;C:\PDCurses-3.8\wincon;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>

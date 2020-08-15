@@ -33,12 +33,12 @@ void loadPlugins();
 void invokeActivePluginCallbacks(char* name);
 Plugin* getPluginByLuaState(lua_State* L);
 void registerLuaCallables(lua_State* L);
-int activatePlugin(lua_State* L);
-int setMargins(lua_State* L);
-int getContents(lua_State* L);
-int setContents(lua_State* L);
-int log(lua_State* L);
-int getFileSize(lua_State* L);
+int l_activatePlugin(lua_State* L);
+int l_setMargins(lua_State* L);
+int l_getContents(lua_State* L);
+int l_setContents(lua_State* L);
+int l_log(lua_State* L);
+int l_getFileSize(lua_State* L);
 
 char* newfile = "new";
 int colors[] = {COLOR_WHITE, COLOR_BLACK, COLOR_WHITE, COLOR_BLUE, COLOR_BLACK, COLOR_YELLOW,
@@ -392,15 +392,15 @@ void invokeActivePluginCallbacks(char* name)
 
 void registerLuaCallables(lua_State* L)
 {
-	lua_register(L, "log", log);
-	lua_register(L, "autoload", activatePlugin);
-	lua_register(L, "margins", setMargins);
-	lua_register(L, "getsize", getFileSize);
+	lua_register(L, "log", l_log);
+	lua_register(L, "autoload", l_activatePlugin);
+	lua_register(L, "margins", l_setMargins);
+	lua_register(L, "getsize", l_getFileSize);
 
 	luaL_newmetatable(L, "array");
-	lua_pushcfunction(L, getContents);
+	lua_pushcfunction(L, l_getContents);
 	lua_setfield(L, -2, "__index");
-	lua_pushcfunction(L, setContents);
+	lua_pushcfunction(L, l_setContents);
 	lua_setfield(L, -2, "__newindex");
 
 	lua_newuserdata(L, sizeof(void*));
@@ -418,14 +418,14 @@ Plugin* getPluginByLuaState(lua_State* L)
 }
 
 // LUA CALLABLES
-int activatePlugin(lua_State* L)	// autoload()
+int l_activatePlugin(lua_State* L)	// autoload()
 {
 	Plugin* p = getPluginByLuaState(L);
 	p->active = 1;
 	return 0;
 }
 
-int setMargins(lua_State* L)		// margins(l, r, t, b)
+int l_setMargins(lua_State* L)		// margins(l, r, t, b)
 {
 	margins[MARGIN_LEFT] = luaL_checknumber(L, 1);
 	margins[MARGIN_RIGHT] = luaL_checknumber(L, 2);
@@ -434,14 +434,14 @@ int setMargins(lua_State* L)		// margins(l, r, t, b)
 	return 0;
 }
 
-int getContents(lua_State* L)		// file[index]
+int l_getContents(lua_State* L)		// file[index]
 {
 	int index = luaL_checknumber(L, 2);
 	lua_pushnumber(L, file.content[index]);
 	return 1;
 }
 
-int setContents(lua_State* L)		// file[index] = value
+int l_setContents(lua_State* L)		// file[index] = value
 {
 	int index = luaL_checknumber(L, 2);
 	byte value = luaL_checknumber(L, 3);
@@ -450,14 +450,14 @@ int setContents(lua_State* L)		// file[index] = value
 	return 0;
 }
 
-int log(lua_State* L)
+int l_log(lua_State* L)
 {
 	char* c = luaL_checkstring(L, 1);
 	cprintf("%s", c);
 	return 0;
 }
 
-int getFileSize(lua_State* L)
+int l_getFileSize(lua_State* L)
 {
 	lua_pushnumber(L, file.size);
 	return 1;
