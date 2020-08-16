@@ -15,33 +15,33 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="globals.c">
+    <ClCompile Include="src\console.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="hex.c">
+    <ClCompile Include="src\globals.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="main.c">
+    <ClCompile Include="src\hex.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="plugsel.c">
+    <ClCompile Include="src\main.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="console.c">
+    <ClCompile Include="src\plugsel.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="globals.h">
+    <ClInclude Include="src\console.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="hex.h">
+    <ClInclude Include="src\globals.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="plugsel.h">
+    <ClInclude Include="src\hex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="console.h">
+    <ClInclude Include="src\plugsel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

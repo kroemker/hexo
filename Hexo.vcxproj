@@ -122,17 +122,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="console.c" />
-    <ClCompile Include="globals.c" />
-    <ClCompile Include="hex.c" />
-    <ClCompile Include="main.c" />
-    <ClCompile Include="plugsel.c" />
+    <ClCompile Include="src\console.c" />
+    <ClCompile Include="src\globals.c" />
+    <ClCompile Include="src\hex.c" />
+    <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\plugsel.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="console.h" />
-    <ClInclude Include="globals.h" />
-    <ClInclude Include="hex.h" />
-    <ClInclude Include="plugsel.h" />
+    <ClInclude Include="src\console.h" />
+    <ClInclude Include="src\globals.h" />
+    <ClInclude Include="src\hex.h" />
+    <ClInclude Include="src\plugsel.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
