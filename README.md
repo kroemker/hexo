@@ -1,16 +1,43 @@
 # Hexo
-Hexo is a hex editor that is suited for viewing, editing and creating of binary files. The editor uses the *curses* library to run inside a console window and supports common functions for editing files. Additional functionality can be added using the *Lua* interface.
+Hexo is a hex editor suited for creating, viewing and editing of binary files. It uses the *curses* library to run inside a console window and supports common functions for editing files. Additional functionality can be added using the *Lua* interface.
 
 ## Building
-The program is designed to compile easily on Windows and Linux. A *Visual Studio* solution is contained at the root of repo that can be used for compiling under Windows.
 
-### Prerequisites
+#### Windows
+
+A Visual Studio solution is contained at the root of repo that can be used for compiling under Windows. The project has the following dependencies:
 
 * [PDCurses](https://pdcurses.org) - curses library for Windows
 * [dirent](https://github.com/tronkko/dirent) - folder access wrapper for Windows
 * [Lua 5.4](http://www.lua.org) - scripting library for plugins
 
-When compiling under Linux only the *Lua* library is needed since *ncurses* and *dirent* are native to most systems.
+Pay attention to set the include and library paths correctly inside Visual Studio.
+
+#### Linux
+
+1. Install build dependencies
+
+The following packages are required:
+* ncurses
+* Lua 5.4
+
+Under Ubuntu they can be installed as follows:
+
+```
+sudo apt-get install libncurses5-dev libncursesw5-dev
+wget -R -O http://www.lua.org/ftp/lua-5.4.0.tar.gz
+tar zxf lua-5.4.0.tar.gz
+cd lua-5.4.0
+make all test
+sudo make install
+```
+
+2. Build source
+In the cloned repo directory:
+
+```
+make && sudo make install
+```
 
 ## Usage
 
