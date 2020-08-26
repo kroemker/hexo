@@ -61,12 +61,12 @@ hexo [file [-p patch]]
 * Z : Undo
 * Y : Redo
 * S : Save file
+* P : View plugin info
 * +/- : Increments/Decrements current selection
 * TAB: Switch little/big endian
 * 0-9,A-F : Enables fast overwrite mode
 * F1-F4 : Switch size mode options
 * F5-F8 : Switch color schemes
-* F10 : View plugin info
 * F12 : Quit
 
 ### Plugins
@@ -82,3 +82,4 @@ A plugin can interact with the editor by
 * function `autoload()` that sets the plugin as active during the initialization process
 * function `getsize()` that returns the file size
 * function `log(str)` that prints `str` to the plugin console 
+* function `getMD5()` that returns a string representing the MD5 hash

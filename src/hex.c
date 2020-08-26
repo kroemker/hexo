@@ -81,7 +81,7 @@ void hexLoad(FileObject* file, WINDOW* win, WINDOW* statBar)
 	loadedFile = file;
     curX = 0;
     curY = 0;
-    sizeMode = 4;
+    sizeMode = 1;
     endianMode = 0;
     currentStartAddr = 0;
     fastOverwriteValue = 0;

@@ -12,6 +12,7 @@
 #define MARGIN_RIGHT		3
 
 typedef unsigned char byte;
+typedef unsigned int u32;
 
 #define NUM_MODES			3
 enum
@@ -25,10 +26,11 @@ typedef struct tFileObject
 {
 	char name[64];
 	byte* content;
-	long size;
-	long capacity;
+	size_t size;
+	size_t capacity;
 	int loaded;
 	int saved;
+	u32 MD5[4];
 }FileObject;
 
 typedef struct tPlugin
