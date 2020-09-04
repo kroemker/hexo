@@ -706,13 +706,12 @@ void createPatchFromUndoList(WINDOW* statBar)
     nocbreak();
 
     char fname[48];
-    char path[96];
-    strcpy(path, "patches/");
+    char path[128];
 
     mvwprintw(statBar, 0, 0, "Patch name: ");
     wscanw(statBar, "%s", fname);
-    strcat(path, fname);
-    strcat(path, ".patch");
+    strcpy(path, fname);
+    strcat(path, ".lua");
     FILE* f = fopen(path, "w");
 
     // create patch from changes after saving
@@ -740,15 +739,10 @@ void createPatchFromUndoList(WINDOW* statBar)
                 pos = undoList[i].address + undoList[i].val_size-j-1;
 
             content = (undoList[i].new_val >> (j*8)) & 0xFF;
-            fprintf(f, "%08llX %02X\n", pos, content);
+            fprintf(f, "file[0x%llX] = 0x%02X\n", pos, content);
         }
         i++;
     }
-    fclose(f);
-
-    // write file into patches
-    f = fopen("patches/patches", "a");
-    fprintf(f, "\n%s", path);
     fclose(f);
 
     cbreak();

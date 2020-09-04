@@ -227,7 +227,7 @@ int input(WINDOW* win, WINDOW* statBar, WINDOW* menuBar)
 			return 0;
 		break;
 	}
-	case 'p':
+	case 'l':
 		mode = (mode + 1) % NUM_MODES;
 		break;
     //save
@@ -417,24 +417,17 @@ unsigned char* loadFile(char* filename)
 
 int patchFile(const char* patchname)
 {
-    FILE* fp = fopen(patchname, "rt");
-    if(!fp)
-        return 1;
-    unsigned long long addr = 0;
-    unsigned int val = 0;
-    while(!feof(fp))
-    {
-        fscanf(fp, "%llX %X\n", &addr, &val);
-        if(addr < file.size)
-        {
-            file.content[addr] = val;
-        }
-        else
-            return 1;
-    }
-    file.saved = 0;
-    fclose(fp);
-    return 2;
+	lua_State* L = luaL_newstate();
+	luaL_openlibs(L);
+	registerLuaCallables(L);
+	if (luaL_dofile(L, patchname) != LUA_OK)
+	{
+		cprintf("Error patching %s\n", lua_tostring(L, -1));
+		lua_close(L);
+		return 1;
+	}
+	lua_close(L);
+	return 2;
 }
 
 void drawProgressBar(WINDOW* statBar, float p)
@@ -558,7 +551,10 @@ int l_setMargins(lua_State* L)		// margins(l, r, t, b)
 int l_getContents(lua_State* L)		// file[index]
 {
 	int index = luaL_checknumber(L, 2);
-	lua_pushnumber(L, file.content[index]);
+	if (index < file.size)
+		lua_pushnumber(L, file.content[index]);
+	else
+		lua_pushnil(L);
 	return 1;
 }
 
@@ -566,8 +562,11 @@ int l_setContents(lua_State* L)		// file[index] = value
 {
 	int index = luaL_checknumber(L, 2);
 	byte value = luaL_checknumber(L, 3);
-	file.content[index] = value;
-	file.saved = 0;
+	if (index < file.size)
+	{
+		file.content[index] = value;
+		file.saved = 0;
+	}
 	return 0;
 }
 

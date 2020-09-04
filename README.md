@@ -42,11 +42,11 @@ make && sudo make install
 ## Usage
 
 ```
-hexo [file [-p patch]]
+hexo [file [-p luapatch]]
 ```
 
 * `file`:     open file
-* `-p patch`: applies patch to the opened file
+* `-p luapatch`: executes the luapatch file after loading
 
 ### Hotkeys
 * X : Cut
@@ -61,7 +61,7 @@ hexo [file [-p patch]]
 * Z : Undo
 * Y : Redo
 * S : Save file
-* P : View plugin info
+* L : View plugin info
 * +/- : Increments/Decrements current selection
 * TAB: Switch little/big endian
 * 0-9,A-F : Enables fast overwrite mode
