@@ -18,11 +18,18 @@
 #include "plugsel.h"
 #include "console.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef linux
+#include <unistd.h>
+#endif
+
 #define HAS_EXTENSION(f, e)			(strcmp(strrchr(f, '.'), e) == 0)
 #define LITTLE_ENDIAN_PRINT_ARGS(x)	(x) & 0xFF, ((x) >> 8) & 0xFF, ((x) >> 16) & 0xFF, ((x) >> 24) & 0xFF	
 #define BYTES_TO_U32(a,b,c,d)		(((a) << 24) | ((b) << 16) | ((c) << 8) | (d))
 #define LEFTROTATE(x, c)			(((x) << (c)) | ((x) >> (32 - (c))))
-
 
 // general
 int input(WINDOW* win, WINDOW* statBar, WINDOW* menuBar);
@@ -34,6 +41,7 @@ void computeMD5();
 void drawProgressBar(WINDOW* statBar, float p);
 
 // plugin
+void getPluginDir(char* pluginDir);
 void loadPlugins();
 void invokeActivePluginCallbacks(char* name);
 Plugin* getPluginByLuaState(lua_State* L);
@@ -47,10 +55,6 @@ int l_getFileSize(lua_State* L);
 int l_getMD5(lua_State* L);
 
 char* newfile = "new";
-int colors[] = {COLOR_WHITE, COLOR_BLACK, COLOR_WHITE, COLOR_BLUE, COLOR_BLACK, COLOR_YELLOW,
-                COLOR_BLACK, COLOR_WHITE, COLOR_BLUE, COLOR_WHITE, COLOR_BLACK, COLOR_GREEN,
-                COLOR_WHITE, COLOR_BLUE, COLOR_MAGENTA, COLOR_BLUE, COLOR_BLACK, COLOR_YELLOW,
-                COLOR_WHITE, COLOR_RED, COLOR_YELLOW, COLOR_RED, COLOR_WHITE, COLOR_BLUE};
 
 FileObject file = { 0 };
 Plugin plugins[16] = { 0 };
@@ -72,9 +76,9 @@ int main(int argc, char* argv[])
 
 	start_color();
 
-	init_pair(1, colors[0], colors[1]);
-	init_pair(2, colors[2], colors[3]);
-	init_pair(3, colors[4], colors[5]);
+	COLOR_INIT_NORMAL();
+	COLOR_INIT_CURSOR();
+	COLOR_INIT_HIGHLIGHT();
 
 	getmaxyx(stdscr, height, width);
 	WINDOW* win = newwin(height - 2, width, 1, 0);
@@ -86,9 +90,9 @@ int main(int argc, char* argv[])
 
 	keypad(win, TRUE);
 	nodelay(win, TRUE);
-	wbkgd(win, COLOR_PAIR(1));
-	wbkgd(statBar, COLOR_PAIR(1));
-	wbkgd(menuBar, COLOR_PAIR(1));
+	wbkgd(win, COLOR_NORMAL);
+	wbkgd(statBar, COLOR_NORMAL);
+	wbkgd(menuBar, COLOR_NORMAL);
 
 	// init plugins
 	consoleLoad();
@@ -164,51 +168,6 @@ int input(WINDOW* win, WINDOW* statBar, WINDOW* menuBar)
     int ch = wgetch(win);
     switch(ch)
     {
-    //color schemes F5-F8
-    case KEY_F(5):
-        init_pair(1, colors[0], colors[1]);
-        init_pair(2, colors[2], colors[3]);
-        init_pair(3, colors[4], colors[5]);
-        wbkgd(win, COLOR_PAIR(1));
-        wbkgd(statBar, COLOR_PAIR(1));
-        wbkgd(menuBar, COLOR_PAIR(1));
-        wrefresh(win);
-        wrefresh(statBar);
-        wrefresh(menuBar);
-        break;
-    case KEY_F(6):
-        init_pair(1, colors[6], colors[7]);
-        init_pair(2, colors[8], colors[9]);
-        init_pair(3, colors[10], colors[11]);
-        wbkgd(win, COLOR_PAIR(1));
-        wbkgd(statBar, COLOR_PAIR(1));
-        wbkgd(menuBar, COLOR_PAIR(1));
-        wrefresh(win);
-        wrefresh(statBar);
-        wrefresh(menuBar);
-        break;
-    case KEY_F(7):
-        init_pair(1, colors[12], colors[13]);
-        init_pair(2, colors[14], colors[15]);
-        init_pair(3, colors[16], colors[17]);
-        wbkgd(win, COLOR_PAIR(1));
-        wbkgd(statBar, COLOR_PAIR(1));
-        wbkgd(menuBar, COLOR_PAIR(1));
-        wrefresh(win);
-        wrefresh(statBar);
-        wrefresh(menuBar);
-        break;
-    case KEY_F(8):
-        init_pair(1, colors[18], colors[19]);
-        init_pair(2, colors[20], colors[21]);
-        init_pair(3, colors[22], colors[23]);
-        wbkgd(win, COLOR_PAIR(1));
-        wbkgd(statBar, COLOR_PAIR(1));
-        wbkgd(menuBar, COLOR_PAIR(1));
-        wrefresh(win);
-        wrefresh(statBar);
-        wrefresh(menuBar);
-        break;
 	case KEY_F(12):
 	{
 		char answer[64] = { 'y' };
@@ -370,7 +329,7 @@ void drawMenu(WINDOW* menu)
         else if(file.loaded == 2)
             mvwprintw(menu, 0, w-34, "New file!");
 
-    wattron(menu, COLOR_PAIR(2));
+    wattron(menu, COLOR_CURSOR);
     if(file.saved == 0)
     {
         mvwaddch(menu, 0, 0, 'M');
@@ -383,7 +342,7 @@ void drawMenu(WINDOW* menu)
     {
         mvwaddch(menu, 0, 0, 'F');
     }
-    wattroff(menu, COLOR_PAIR(2));
+    wattroff(menu, COLOR_CURSOR);
     wrefresh(menu);
 }
 
@@ -446,13 +405,37 @@ void drawProgressBar(WINDOW* statBar, float p)
     wtimeout(statBar,-1);
 }
 
+void getPluginDir(char* pluginDir) {
+	// get plugin directory
+	int bytes;
+#ifdef _WIN32
+	bytes = GetModuleFileName(NULL, pluginDir, 256);
+#endif
+
+#ifdef linux
+	bytes = readlink("/proc/self/exe", pluginDir, 256);
+	if (bytes >= 0) {
+		pluginDir[bytes] = '\0';
+	}
+#endif
+	int i;
+	for (i = bytes - 1; i >= 0 && pluginDir[i] != '/' && pluginDir[i] != '\\'; i--);
+	if (i > 0) {
+		pluginDir[i + 1] = '\0';
+	}
+	strcat(pluginDir, "plugins/");
+}
+
 void loadPlugins()
 {
 	DIR* dir;
 	struct dirent *ent;
 
+	char pluginDir[256];
+	getPluginDir(pluginDir);
+
 	// read plugin dir
-	if (dir = opendir("plugins"))
+	if (dir = opendir(pluginDir))
 	{
 		while (ent = readdir(dir))
 		{
@@ -462,7 +445,7 @@ void loadPlugins()
 				num_plugins++;
 				// initialize plugin
 				char path[128] = { 0 };
-				strcat(path, "plugins/");
+				strcat(path, pluginDir);
 				strcat(path, ent->d_name);
 				strcpy(p->name, ent->d_name);
 				p->L = luaL_newstate();
@@ -483,7 +466,7 @@ void loadPlugins()
 		closedir(dir);
 	}
 	else
-		cprintf("Plugin directory not found!\n");
+		cprintf("Plugin directory \'%s\' not found!\n", pluginDir);
 }
 
 void invokeActivePluginCallbacks(char* name)

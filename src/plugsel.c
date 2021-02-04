@@ -18,7 +18,7 @@ void plugSelLoad(Plugin* _plugins, int _num_plugins)
 	sel_win = newwin(num_plugins + 2, win_width, h / 2 - 5, w / 2 - win_width / 2);
 	keypad(sel_win, TRUE);
 	nodelay(sel_win, TRUE);
-	wbkgd(sel_win, COLOR_PAIR(1));
+	wbkgd(sel_win, COLOR_NORMAL);
 	plugs = _plugins;
 	num_plugins = _num_plugins;
 	cursor = 0;
@@ -47,9 +47,9 @@ void plugSelDraw()
 	for (int i = 0; i < num_plugins; i++)
 	{
 		if (i == cursor)
-			wattron(sel_win, COLOR_PAIR(2));
+			wattron(sel_win, COLOR_CURSOR);
 		else
-			wattron(sel_win, COLOR_PAIR(1));
+			wattron(sel_win, COLOR_NORMAL);
 
 		int len = strlen(plugs[i].name);
 
@@ -58,21 +58,21 @@ void plugSelDraw()
 			mvwaddch(sel_win, i + 1, j + 1, ' ');
 
 		if (plugs[i].active)
-			wattron(sel_win, COLOR_PAIR(3));
+			wattron(sel_win, COLOR_HIGHLIGHT);
 		else
-			wattron(sel_win, COLOR_PAIR(1));
+			wattron(sel_win, COLOR_NORMAL);
 			
 		mvwaddch(sel_win, i + 1, win_width - 2, ' ');
 
 		if (plugs[i].active)
-			wattroff(sel_win, COLOR_PAIR(3));
+			wattroff(sel_win, COLOR_HIGHLIGHT);
 		else
-			wattroff(sel_win, COLOR_PAIR(1));
+			wattroff(sel_win, COLOR_NORMAL);
 
 		if (i == cursor)
-			wattroff(sel_win, COLOR_PAIR(2));
+			wattroff(sel_win, COLOR_CURSOR);
 		else
-			wattroff(sel_win, COLOR_PAIR(1));
+			wattroff(sel_win, COLOR_NORMAL);
 
 	}
 

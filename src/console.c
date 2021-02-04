@@ -1,22 +1,23 @@
 
 #include "console.h"
+#include "globals.h"
 #include <curses.h>
 #include <stdarg.h>
 #include <stdlib.h>
 
-WINDOW* con_win;
-char* msgs;
-int msgs_size = 0;
-int msgs_capacity = 1024;
-int line = 0;
-int line_start = 0;
+static WINDOW* con_win;
+static char* msgs;
+static int msgs_size = 0;
+static int msgs_capacity = 1024;
+static int line = 0;
+static int line_start = 0;
 
 void consoleLoad()
 {
 	int h, w;
 	getmaxyx(stdscr, h, w);
 	con_win = newwin(h - 2, w, 1, 0);
-	wbkgd(con_win, COLOR_PAIR(1));
+	wbkgd(con_win, COLOR_NORMAL);
 	msgs = malloc(msgs_capacity);
 }
 

@@ -11,6 +11,14 @@
 #define MARGIN_BOTTOM		2
 #define MARGIN_RIGHT		3
 
+#define COLOR_INIT_NORMAL()			init_pair(1, COLOR_WHITE, COLOR_BLACK)
+#define COLOR_INIT_CURSOR()			init_pair(2, COLOR_WHITE, COLOR_BLUE)
+#define COLOR_INIT_HIGHLIGHT()		init_pair(3, COLOR_YELLOW, COLOR_BLACK)
+
+#define COLOR_NORMAL				COLOR_PAIR(1)
+#define COLOR_CURSOR				COLOR_PAIR(2)
+#define COLOR_HIGHLIGHT				COLOR_PAIR(3)
+
 typedef unsigned char byte;
 typedef unsigned int u32;
 

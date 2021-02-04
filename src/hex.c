@@ -42,26 +42,26 @@ typedef struct
     int saved;
 }Change;
 
-FileObject* loadedFile;
+static FileObject* loadedFile;
 
-int fastTypeMode;
-unsigned long long fastOverwriteValue;
-unsigned long long clipboardValue;
+static int fastTypeMode;
+static unsigned long long fastOverwriteValue;
+static unsigned long long clipboardValue;
 
-int  curX;
-int  curY;
-long long currentStartAddr;
+static int  curX;
+static int  curY;
+static long long currentStartAddr;
 
-AddressInfo addressInfo[32]; //FIXME
-int numInfo;
+static AddressInfo addressInfo[32]; //FIXME
+static int numInfo;
 
-char  endianness[] = {'B','L'};
-int   endianMode;
-int   sizeMode;
+static char endianness[] = {'B','L'};
+static int  endianMode;
+static int  sizeMode;
 
-Change undoList[1000];
-numUndos = 0;
-numUndoRedos = 0;
+static Change undoList[1000];
+static numUndos = 0;
+static numUndoRedos = 0;
 ///
 
 void moveCursor(WINDOW* win, int direction);
@@ -333,10 +333,7 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 				if (loadedFile->size > currentStartAddr + (i - 2) * 0x10 + j + k / 2)
 				{
 					//cursor highlight on
-					if ((curX == j) && (curY == i - 2))
-						wattron(win, COLOR_PAIR(2));
-					else
-						wattron(win, COLOR_PAIR(1));
+					wattron(win, (curX == j) && (curY == i - 2) ? COLOR_CURSOR : COLOR_NORMAL);
 
 					//handle endianness
 					if (endianMode)
@@ -352,10 +349,7 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 						mvwaddch(win, i + tm, asciiOffset + j + k / 2, content);
 
 					//cursor highlight off
-					if ((curX == j) && (curY == i - 2))
-						wattroff(win, COLOR_PAIR(2));
-					else
-						wattroff(win, COLOR_PAIR(1));
+					wattroff(win, (curX == j) && (curY == i - 2) ? COLOR_CURSOR : COLOR_NORMAL);
 				}
 				else
 					break;
