@@ -307,7 +307,7 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 	wclear(statBar);
 
 	getmaxyx(win, h, w);
-	mvwaddch(win, 1 + tm, 1 + lm, endianness[endianMode]);
+	mvwprintw(win, 1 + tm, 1 + lm, "%c", endianness[endianMode]);
 
 	//print vertical idents
 	int x = 0;
