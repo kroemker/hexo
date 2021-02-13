@@ -123,6 +123,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\ArrayList.c" />
     <ClCompile Include="src\console.c" />
     <ClCompile Include="src\globals.c" />
     <ClCompile Include="src\hex.c" />
@@ -130,6 +131,7 @@
     <ClCompile Include="src\plugsel.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\ArrayList.h" />
     <ClInclude Include="src\console.h" />
     <ClInclude Include="src\globals.h" />
     <ClInclude Include="src\hex.h" />

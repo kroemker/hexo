@@ -2,8 +2,9 @@
 #define PLUGIN_SELECTOR_H
 
 #include "globals.h"
+#include "ArrayList.h"
 
-void plugSelLoad(Plugin* _plugins, int _num_plugins);
+void plugSelLoad(ArrayList* _plugins);
 int plugSelInput(int c);
 void plugSelDraw();
 

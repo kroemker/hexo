@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include <locale.h>
 
+#include "ArrayList.h"
 #include "globals.h"
 #include "hex.h"
 #include "plugsel.h"
@@ -26,18 +27,26 @@
 #include <unistd.h>
 #endif
 
-#define HAS_EXTENSION(f, e)			(strcmp(strrchr(f, '.'), e) == 0)
+#define GET_EXTENSION(f)			(strrchr(f, '.'))
+#define HAS_EXTENSION(f, e)			(strcmp(GET_EXTENSION(f), e) == 0)
 #define LITTLE_ENDIAN_PRINT_ARGS(x)	(x) & 0xFF, ((x) >> 8) & 0xFF, ((x) >> 16) & 0xFF, ((x) >> 24) & 0xFF	
 #define BYTES_TO_U32(a,b,c,d)		(((a) << 24) | ((b) << 16) | ((c) << 8) | (d))
 #define LEFTROTATE(x, c)			(((x) << (c)) | ((x) >> (32 - (c))))
+
+#define SUB_MENU_WIDTH_THRESHOLD	87
 
 // general
 int input();
 void setupWindows();
 void redraw();
+void resize();
+void tryQuit();
+void toggleMode();
+void initSubMenu();
 void drawMenu();
+void drawSubMenu();
 unsigned char* loadFile(char* filename);
-void saveFile(const char* filename);
+void saveFile();
 int patchFile(const char* patchname);
 void computeMD5();
 void drawProgressBar(float p);
@@ -45,6 +54,7 @@ void drawProgressBar(float p);
 // plugin
 void getPluginDir(char* pluginDir);
 void loadPlugins();
+void invokePluginCallback(lua_State* L, char* name);
 void invokeActivePluginCallbacks(char* name);
 Plugin* getPluginByLuaState(lua_State* L);
 void registerLuaCallables(lua_State* L);
@@ -55,20 +65,28 @@ int l_setContents(lua_State* L);
 int l_log(lua_State* L);
 int l_getFileSize(lua_State* L);
 int l_getMD5(lua_State* L);
+int l_getFileName(lua_State* L);
+int l_getFilePath(lua_State* L);
+int l_getFileExtension(lua_State* L);
+int l_registerMenuCallback(lua_State* L);
+int l_showConsole(lua_State* L);
 
 static char* newfile = "new";
 
 static FileObject file = { 0 };
-static Plugin plugins[16] = { 0 };
-static int num_plugins = 0;
+static ArrayList plugins;
 static int mode = HEX_EDITOR;
 static char console[1024];
 static int messages = 0;
 static int quit = 0;
+static int sub_menu_orientation = VERTICAL;
+static int sub_menu_cursor = 0;
+static ArrayList subMenuItems;
 
-static WINDOW *win = NULL;
-static WINDOW* statBar = NULL;
+static WINDOW* win = NULL;
 static WINDOW* menuBar = NULL;
+static WINDOW* subMenu = NULL;
+static WINDOW* statBar = NULL;
 
 int main(int argc, char* argv[]) {
 	patchFailed = 0;
@@ -84,6 +102,7 @@ int main(int argc, char* argv[]) {
 	COLOR_INIT_NORMAL();
 	COLOR_INIT_CURSOR();
 	COLOR_INIT_HIGHLIGHT();
+	COLOR_INIT_CALLER();
 
 	setupWindows();
 
@@ -95,6 +114,8 @@ int main(int argc, char* argv[]) {
 	wbkgd(win, COLOR_NORMAL);
 	wbkgd(statBar, COLOR_NORMAL);
 	wbkgd(menuBar, COLOR_NORMAL);
+
+	initSubMenu();
 
 	// init plugins
 	consoleLoad();
@@ -125,9 +146,10 @@ int main(int argc, char* argv[]) {
 
 	// prepare editor
 	drawMenu();
+	drawSubMenu();
 	hexLoad(&file, win, statBar);
 	hexDraw(win, statBar);
-	plugSelLoad(plugins, num_plugins);
+	plugSelLoad(&plugins);
 
 	// main loop
 	int c;
@@ -139,73 +161,114 @@ int main(int argc, char* argv[]) {
 		else if (mode == PLUGIN_SELECTOR) {
 			c = plugSelInput(c);
 		}
-		redraw(win, statBar, menuBar);
+
+		if (c != -1) {
+			redraw();
+		}
 	}
 
 	endwin();
 	if (file.content)
 		free(file.content);
+	ArrayList_Delete(&subMenuItems);
+
 	return 0;
 }
 
 void setupWindows() {
-	int width, height;
-	getmaxyx(stdscr, height, width);
-	win = newwin(height - 2, width, 1, 0);
-	menuBar = newwin(1, width, 0, 0);
-	statBar = newwin(1, width, height - 1, 0);
+	int w, h;
+	getmaxyx(stdscr, h, w);
+
+	int main_x = 0;
+	int main_y = 1;
+	if (w > SUB_MENU_WIDTH_THRESHOLD) {
+		sub_menu_orientation = VERTICAL;
+		main_x += 20;
+		subMenu = newwin(h - 2, main_x, 1, 0);
+	}
+	else {
+		sub_menu_orientation = HORIZONTAL;
+		main_y += 4;
+		subMenu = newwin(main_y - 1, w, 1, 0);
+	}
+
+	win = newwin(h - 1 - main_y, w - main_x, main_y, main_x);
+	menuBar = newwin(1, w, 0, 0);
+	statBar = newwin(1, w, h - 1, 0);
 }
 
 void resize() {
-	resize_term(0, 0);
-	int width, height;
-	getmaxyx(stdscr, height, width);
-	wresize(win, height - 2, width);
-	wresize(menuBar, 1, width);
-	wresize(statBar, 1, width);
-	mvwin(win, 1, 0);
+	int w, h;
+	if (resize_term(0, 0) == ERR) {
+		return;
+	}
+	getmaxyx(stdscr, h, w);
+
+	int main_x = 1;
+	int main_y = 1;
+	if (w > SUB_MENU_WIDTH_THRESHOLD) {
+		sub_menu_orientation = VERTICAL;
+		main_x += 20;
+		wresize(subMenu, h - 2, main_x - 1);
+	}
+	else {
+		sub_menu_orientation = HORIZONTAL;
+		main_y += 4;
+		wresize(subMenu, main_y - 1, w);
+	}
+	mvwin(subMenu, 1, 0);
+
+	wresize(win, h - 1 - main_y, w);
+	mvwin(win, main_y, main_x);
+
+	wresize(menuBar, 1, w);
 	mvwin(menuBar, 0, 0);
-	mvwin(statBar, height - 1, 0);
+
+	wresize(statBar, 1, w);
+	mvwin(statBar, h - 1, 0);
 }
 
 int input() {
 	int ch = wgetch(win);
 	switch (ch) {
-		case KEY_F(12):
-		{
-			char answer[64] = { 'y' };
-			if (!file.saved) {
-				wclear(statBar);
-				echo();
-				nocbreak();
-				mvwprintw(statBar, 0, 0, "File was modified. Quit anyway? (y or n) ");
-				wscanw(statBar, "%s", answer);
-				noecho();
-				cbreak();
-				wrefresh(statBar);
-			}
-			if (strcmp(answer, "y") == 0) {
-				quit = 1;
-			}
-			break;
+	case KEY_F(5):
+	case KEY_RESIZE:
+		resize();
+		break;
+	case KEY_F(12):
+		tryQuit();
+		break;
+	case 'l':
+		toggleMode();
+		break;
+	case 's':
+		saveFile();
+		break;
+	case KEY_NPAGE:
+		sub_menu_cursor = (sub_menu_cursor + 1) % subMenuItems.size;
+		break;
+	case KEY_PPAGE:
+		sub_menu_cursor = sub_menu_cursor == 0 ? subMenuItems.size : (sub_menu_cursor - 1) % subMenuItems.size;
+		break;
+	case '\n':
+	{
+		SubMenuItem* smi = ArrayList_Get(&subMenuItems, sub_menu_cursor);
+		if (smi->handlerType == HANDLER_C) {
+			smi->cHandler();
 		}
-		case 'l':
-			mode = (mode + 1) % NUM_MODES;
-			break;
-			//save
-		case 's':
-			saveFile(file.name);
-			break;
+		else if (smi->handlerType == HANDLER_LUA) {
+			invokePluginCallback(smi->luaState, smi->luaHandlerName);
+		}
+		break;
+	}
 	}
 	return ch;
 }
 
 void redraw() {
-	if (is_termresized()) {
-		resize();
-	}
 	if (mode == HEX_EDITOR) {
 		hexDraw(win, statBar);
+		drawSubMenu();
 	}
 	else if (mode == PLUGIN_SELECTOR) {
 		plugSelDraw();
@@ -213,11 +276,43 @@ void redraw() {
 	else if (mode == CONSOLE) {
 		consoleDraw();
 	}
-	drawMenu(menuBar);
+	drawMenu();
 }
 
-void saveFile(const char* filename) {
-	FILE* fp = fopen(filename, "wb");
+void initSubMenu() {
+	subMenuItems = ArrayList_New(6, sizeof(SubMenuItem));
+
+	SubMenuItem saveMenuItem = { .name = "Save", .handlerType = HANDLER_C, .cHandler = saveFile, .plugin = NULL };
+	SubMenuItem pluginsMenuItem = { .name = "Plugins", .handlerType = HANDLER_C, .cHandler = toggleMode, .plugin = NULL };
+	SubMenuItem quitMenuItem = { .name = "Quit", .handlerType = HANDLER_C, .cHandler = tryQuit, .plugin = NULL };
+	ArrayList_Add(&subMenuItems, &saveMenuItem);
+	ArrayList_Add(&subMenuItems, &pluginsMenuItem);
+	ArrayList_Add(&subMenuItems, &quitMenuItem);
+}
+
+void tryQuit() {
+	char answer[64] = { 'y' };
+	if (!file.saved) {
+		wclear(statBar);
+		echo();
+		nocbreak();
+		mvwprintw(statBar, 0, 0, "File was modified. Quit anyway? (y or n) ");
+		wscanw(statBar, "%s", answer);
+		noecho();
+		cbreak();
+		wrefresh(statBar);
+	}
+	if (strcmp(answer, "y") == 0) {
+		quit = 1;
+	}
+}
+
+void toggleMode() {
+	mode = (mode + 1) % NUM_MODES;
+}
+
+void saveFile() {
+	FILE* fp = fopen(file.name, "wb");
 	if (fp) {
 		invokeActivePluginCallbacks("onFileSave");
 		fwrite(file.content, sizeof(char), file.size, fp);
@@ -231,9 +326,9 @@ void saveFile(const char* filename) {
 
 void computeMD5() {
 	u32 s[] = { 7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
-				 5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
-				 4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
-				 6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21 };
+				5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
+				4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
+				6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21 };
 
 	u32 K[] = { 0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
 				 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
@@ -347,6 +442,61 @@ void drawMenu() {
 	wrefresh(menuBar);
 }
 
+void drawSubMenu() {
+	int w, h;
+	wclear(subMenu);
+
+	getmaxyx(subMenu, h, w);
+	(void)h;
+
+	int x = 1, y = 0;
+	for (int i = 0; i < subMenuItems.size && y < h - 1; i++) {
+		SubMenuItem* smi = ArrayList_Get(&subMenuItems, i);
+		if (smi->plugin != NULL && !smi->plugin->active) {
+			continue;
+		}
+
+		int len = strlen(smi->name);
+
+		if (sub_menu_cursor == i) {
+			wattron(subMenu, COLOR_CURSOR);
+		}
+
+		if (sub_menu_orientation == VERTICAL) {
+			y++;
+		}
+		else if (sub_menu_orientation == HORIZONTAL) {
+			if (x + len + 4 < w - 1) {
+				x = 0;
+				y++;
+			}
+			waddch(subMenu, ' ');
+			waddch(subMenu, ' ');
+		}
+
+
+		mvwprintw(subMenu, y, x, "%s", smi->name);
+
+		if (sub_menu_orientation == VERTICAL) {
+			for (int j = len; j < w - 1; j++) {
+				waddch(subMenu, ' ');
+			}
+		}
+		else if (sub_menu_orientation == HORIZONTAL) {
+			waddch(subMenu, ' ');
+			waddch(subMenu, ' ');
+			x += len + 4;
+		}
+
+		if (sub_menu_cursor == i) {
+			wattroff(subMenu, COLOR_CURSOR);
+		}
+	}
+
+	box(subMenu, 0, 0);
+	wrefresh(subMenu);
+}
+
 unsigned char* loadFile(char* filename) {
 	FILE* fp;
 	long lSize;
@@ -379,7 +529,7 @@ int patchFile(const char* patchname) {
 	luaL_openlibs(L);
 	registerLuaCallables(L);
 	if (luaL_dofile(L, patchname) != LUA_OK) {
-		cprintf("Error patching %s\n", lua_tostring(L, -1));
+		cprintf("Patch", "Error patching %s\n", lua_tostring(L, -1));
 		lua_close(L);
 		return 1;
 	}
@@ -429,44 +579,52 @@ void loadPlugins() {
 	char pluginDir[256];
 	getPluginDir(pluginDir);
 
+	plugins = ArrayList_New(6, sizeof(Plugin));
 	// read plugin dir
 	if (dir = opendir(pluginDir)) {
 		while (ent = readdir(dir)) {
 			if (ent->d_type == DT_REG && HAS_EXTENSION(ent->d_name, ".lua")) {
-				Plugin* p = &plugins[num_plugins];
-				num_plugins++;
+				Plugin p;
 				// initialize plugin
 				char path[128] = { 0 };
 				strcat(path, pluginDir);
 				strcat(path, ent->d_name);
-				strcpy(p->name, ent->d_name);
-				p->L = luaL_newstate();
-				luaL_openlibs(p->L);
-				registerLuaCallables(p->L);
-				if (luaL_dofile(p->L, path) != LUA_OK) {
-					p->error = 1;
-					cprintf("Error loading %s\n", lua_tostring(p->L, -1));
+				strcpy(p.name, ent->d_name);
+				p.L = luaL_newstate();
+				luaL_openlibs(p.L);
+				registerLuaCallables(p.L);
+				ArrayList_Add(&plugins, &p);
+				if (luaL_dofile(p.L, path) != LUA_OK) {
+					p.error = 1;
+					cprintf(p.name, "Error loading %s\n", lua_tostring(p.L, -1));
 				}
 				else {
-					p->error = 0;
-					cprintf("Loaded %s\n", ent->d_name);
+					p.error = 0;
+					cprintf(p.name, "Loaded %s\n", ent->d_name);
 				}
 			}
 		}
 		closedir(dir);
 	}
 	else
-		cprintf("Plugin directory \'%s\' not found!\n", pluginDir);
+		cprintf("Plugin Loader", "Plugin directory \'%s\' not found!\n", pluginDir);
+}
+
+void invokePluginCallback(lua_State* L, char* name) {
+	if (lua_getglobal(L, name) == LUA_TFUNCTION) {
+		lua_pcall(L, 0, 0, 0);
+	}
 }
 
 void invokeActivePluginCallbacks(char* name) {
-	for (int i = 0; i < num_plugins; i++) {
-		if (!plugins[i].error && plugins[i].active && lua_getglobal(plugins[i].L, name) == LUA_TFUNCTION) {
-			if (lua_pcall(plugins[i].L, 0, 0, 0) != LUA_OK) {
-				plugins[i].error = 1;
-				plugins[i].active = 0;
-				cprintf("Error in %s\n", lua_tostring(plugins[i].L, -1));
-				cprintf("%s is removed from the list of active plugins\n", plugins[i].name);
+	for (int i = 0; i < plugins.size; i++) {
+		Plugin* curr = ArrayList_Get(&plugins, i);
+		if (!curr->error && curr->active && lua_getglobal(curr->L, name) == LUA_TFUNCTION) {
+			if (lua_pcall(curr->L, 0, 0, 0) != LUA_OK) {
+				curr->error = 1;
+				curr->active = 0;
+				cprintf(curr->name, "Error in %s\n", lua_tostring(curr->L, -1));
+				cprintf(curr->name, "%s is removed from the list of active plugins\n", curr->name);
 			}
 		}
 	}
@@ -476,8 +634,13 @@ void registerLuaCallables(lua_State* L) {
 	lua_register(L, "log", l_log);
 	lua_register(L, "autoload", l_activatePlugin);
 	lua_register(L, "margins", l_setMargins);
-	lua_register(L, "getsize", l_getFileSize);
+	lua_register(L, "getFileSize", l_getFileSize);
 	lua_register(L, "getMD5", l_getMD5);
+	lua_register(L, "getFileName", l_getFileName);
+	lua_register(L, "getFilePath", l_getFilePath);
+	lua_register(L, "getFileExtension", l_getFileExtension);
+	lua_register(L, "registerMenuCallback", l_registerMenuCallback);
+	lua_register(L, "showConsole", l_showConsole);
 
 	luaL_newmetatable(L, "array");
 	lua_pushcfunction(L, l_getContents);
@@ -492,9 +655,12 @@ void registerLuaCallables(lua_State* L) {
 }
 
 Plugin* getPluginByLuaState(lua_State* L) {
-	for (int i = 0; i < num_plugins; i++)
-		if (plugins[i].L == L)
-			return &plugins[i];
+	for (int i = 0; i < plugins.size; i++) {
+		Plugin* curr = ArrayList_Get(&plugins, i);
+		if (curr->L == L) {
+			return curr;
+		}
+	}
 	return NULL;
 }
 
@@ -538,7 +704,7 @@ int l_setContents(lua_State* L)		// file[index] = value
 
 int l_log(lua_State* L) {
 	char* c = luaL_checkstring(L, 1);
-	cprintf("%s", c);
+	clog(getPluginByLuaState(L)->name, "%s", c);
 	return 0;
 }
 
@@ -555,4 +721,50 @@ int l_getMD5(lua_State* L) {
 		LITTLE_ENDIAN_PRINT_ARGS(file.MD5[2]), LITTLE_ENDIAN_PRINT_ARGS(file.MD5[3]));
 	lua_pushstring(L, md5str);
 	return 1;
+}
+
+int l_getFileName(lua_State* L) {
+	char* filename = strrchr(file.name, '/');
+	if (filename == NULL) {
+		filename = strrchr(file.name, '\\');
+	}
+	if (filename == NULL) {
+		filename = file.name;
+	}
+
+	if (filename[0] == '/' || filename[0] == '\\') {
+		filename = &filename[1];
+	}
+
+	lua_pushstring(L, filename);
+	return 1;
+}
+
+int l_getFilePath(lua_State* L) {
+	lua_pushstring(L, file.name);
+	return 1;
+}
+
+int l_getFileExtension(lua_State* L) {
+	char* extension = GET_EXTENSION(file.name);
+	lua_pushstring(L, extension);
+	return 1;
+}
+
+int l_registerMenuCallback(lua_State* L) {
+	char* name = luaL_checkstring(L, 1);
+	char* handlerName = luaL_checkstring(L, 2);
+	SubMenuItem smi;
+	smi.handlerType = HANDLER_LUA;
+	smi.luaState = L;
+	smi.plugin = getPluginByLuaState(L);
+	strcpy(&smi.name, name);
+	strcpy(&smi.luaHandlerName, handlerName);
+	ArrayList_Add(&subMenuItems, &smi);
+	return 0;
+}
+
+int l_showConsole(lua_State* L) {
+	mode = CONSOLE;
+	return 0;
 }

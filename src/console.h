@@ -3,6 +3,6 @@
 
 void consoleLoad();
 void consoleDraw();
-void cprintf(const char* format, ...);
+void cprintf(const char* caller, const char* format, ...);
 
 #endif
