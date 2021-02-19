@@ -4,8 +4,9 @@
 #include <curses.h>
 #include <lua.h>
 #include <lualib.h>
+#include "ArrayList.h"
 
-#define TEXT_BUFFER_SIZE	32
+#define TEXT_BUFFER_SIZE	64
 #define MARGIN_TOP			0
 #define MARGIN_LEFT			1
 #define MARGIN_BOTTOM		2
@@ -16,7 +17,7 @@
 
 #define COLOR_INIT_NORMAL()			init_pair(1, COLOR_WHITE, COLOR_BLACK)
 #define COLOR_INIT_CURSOR()			init_pair(2, COLOR_WHITE, COLOR_BLUE)
-#define COLOR_INIT_HIGHLIGHT()		init_pair(3, COLOR_YELLOW, COLOR_BLACK)
+#define COLOR_INIT_HIGHLIGHT()		init_pair(3, COLOR_BLACK, COLOR_YELLOW)
 #define COLOR_INIT_CALLER()			init_pair(4, COLOR_GREEN, COLOR_BLACK)
 
 #define COLOR_NORMAL				COLOR_PAIR(1)
@@ -27,8 +28,11 @@
 #define HANDLER_C			0
 #define HANDLER_LUA			1
 
+#define MATCH_ANY_PATTERN			"%[^\n]%*c"
+
 typedef unsigned char byte;
 typedef unsigned int u32;
+typedef unsigned long long u64;
 
 typedef void (*SubMenuItemHandler)();
 
@@ -41,9 +45,7 @@ enum {
 
 typedef struct tFileObject {
 	char name[64];
-	byte* content;
-	size_t size;
-	size_t capacity;
+	ArrayList content;
 	int loaded;
 	int saved;
 	u32 MD5[4];

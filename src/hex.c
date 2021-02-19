@@ -23,62 +23,48 @@
 
 typedef struct
 {
-    char baseFilename[TEXT_BUFFER_SIZE];
-    unsigned long long base;
-    unsigned long long offset;
-    unsigned long long size;
-    int recordSize;
-    char name[TEXT_BUFFER_SIZE];
-}AddressInfo;
-
-typedef struct
-{
-    unsigned long long address;
-    unsigned long long prev_val;
-    unsigned long long new_val;
+    u64 address;
+    u64 prev_val;
+    u64 new_val;
     int endian;
     int val_size;
     int type;
     int saved;
 }Change;
 
-static FileObject* loadedFile;
+static FileObject* file;
 
 static int fastTypeMode;
-static unsigned long long fastOverwriteValue;
-static unsigned long long clipboardValue;
+static u64 fastOverwriteValue;
+static u64 clipboardValue;
 
 static int  curX;
 static int  curY;
 static long long currentStartAddr;
 
-static AddressInfo addressInfo[32]; //FIXME
-static int numInfo;
-
 static char endianness[] = {'B','L'};
 static int  endianMode;
 static int  sizeMode;
 
-static Change undoList[1000];
+static ArrayList undoList;
 static numUndos = 0;
 static numUndoRedos = 0;
-///
+
 
 void moveCursor(WINDOW* win, int direction);
-unsigned long long searchData(int cursorPos, unsigned char* dat, int datSize);
+u64 searchData(int cursorPos, byte* dat, int datSize);
 void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar);
 void insertData(unsigned long position, int size);
 void deleteData(unsigned long position, int size);
 void gotoAddressMenu(WINDOW* win, WINDOW* statBar);
-void addToUndoList(int type, unsigned long long address, unsigned long long prev_val, unsigned long long new_val);
+void addToUndoList(int type, u64 address, u64 prev_val, u64 new_val);
 void undo(WINDOW* statBar);
 void redo(WINDOW* statBar);
 void createPatchFromUndoList(WINDOW* statBar);
-///
 
-void hexLoad(FileObject* file, WINDOW* win, WINDOW* statBar)
+void hexLoad(FileObject* f, WINDOW* win, WINDOW* statBar)
 {
-	loadedFile = file;
+	file = f;
     curX = 0;
     curY = 0;
     sizeMode = 1;
@@ -87,14 +73,14 @@ void hexLoad(FileObject* file, WINDOW* win, WINDOW* statBar)
     fastOverwriteValue = 0;
     fastTypeMode = 0;
     clipboardValue = 0;
-    numInfo = 0;
+	undoList = ArrayList_New(50, sizeof(Change));
 }
 
 int hexInput(int ch, WINDOW* win, WINDOW* statBar)
 {
     int h, w, i, j, x;
-    unsigned long long c = 0;
-    unsigned long long prev = 0;
+    u64 c = 0;
+    u64 prev = 0;
 
     getmaxyx(win, h, w);
     switch (ch)
@@ -117,7 +103,7 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
         fastTypeMode = 0;
         break;
     case KEY_F(2):
-        if((currentStartAddr + curX + 1 + curY*0x10) < loadedFile->size)
+        if((currentStartAddr + curX + 1 + curY*0x10) < file->content.size)
         {
             sizeMode = 2;
             curX = (curX/sizeMode) * sizeMode;
@@ -125,7 +111,7 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
         }
         break;
     case KEY_F(3):
-        if((currentStartAddr + curX + 3 + curY*0x10) < loadedFile->size)
+        if((currentStartAddr + curX + 3 + curY*0x10) < file->content.size)
         {
             sizeMode = 4;
             curX = (curX/sizeMode) * sizeMode;
@@ -133,7 +119,7 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
         }
         break;
     case KEY_F(4):
-        if((currentStartAddr + curX + 7 + curY*0x10) < loadedFile->size)
+        if((currentStartAddr + curX + 7 + curY*0x10) < file->content.size)
         {
             sizeMode = 8;
             curX = (curX/sizeMode) * sizeMode;
@@ -152,29 +138,37 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
     //+-, inc,dec functionality
     //case PADPLUS:
     case '+':
-        for(i = 0; i < sizeMode; i++)
-            c |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+		for (i = 0; i < sizeMode; i++) {
+			u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+			c |= *bt << (i * 8);
+		}
         prev = c;
         c++;
-        for(i = 0; i < sizeMode; i++)
-			loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] = (c >> (i*8)) & 0xFF;
+		for (i = 0; i < sizeMode; i++) {
+			byte bt = (c >> (i * 8)) & 0xFF;
+			ArrayList_Set(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10, &bt);
+		}
 
         addToUndoList(CHANGE_INCREMENT, currentStartAddr + curX + curY * 0x10, prev, c);
         fastTypeMode = 0;
-        loadedFile->saved = 0;
+        file->saved = 0;
         break;
     //case PADMINUS:
     case '-':
-        for(i = 0; i < sizeMode; i++)
-            c |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+		for (i = 0; i < sizeMode; i++) {
+			u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+			c |= *bt << (i * 8);
+		}
         prev = c;
         c--;
-        for(i = 0; i < sizeMode; i++)
-			loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] = (c >> (i*8)) & 0xFF;
+		for (i = 0; i < sizeMode; i++) {
+			byte bt = (c >> (i * 8)) & 0xFF;
+			ArrayList_Set(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10, &bt);
+		}
 
         addToUndoList(CHANGE_INCREMENT, currentStartAddr + curX + curY * 0x10, prev, c);
         fastTypeMode = 0;
-        loadedFile->saved = 0;
+        file->saved = 0;
         break;
     //search text
     case 't':
@@ -192,12 +186,12 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
     case 'n':
 		insertData(currentStartAddr + curX + curY * 0x10, sizeMode);
 		addToUndoList(CHANGE_INSERT, currentStartAddr + curX + curY * 0x10, 0, 0);
-        loadedFile->saved = 0;
+        file->saved = 0;
         break;
     case 'm':
 		insertData(currentStartAddr + curX + curY * 0x10 + sizeMode, sizeMode);
 		addToUndoList(CHANGE_INSERT, currentStartAddr + curX + curY * 0x10 + sizeMode, 0, 0);
-        loadedFile->saved = 0;
+        file->saved = 0;
         break;
     case 'p':
         createPatchFromUndoList(statBar);
@@ -207,37 +201,47 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
 		clipboardValue = 0;
         for(i = 0; i < sizeMode; i++)
         {
-            clipboardValue |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+			u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+            clipboardValue |= *bt << (i*8);
         }
         addToUndoList(CHANGE_DELETE, currentStartAddr + curX + curY * 0x10, clipboardValue, 0);
 
         deleteData(currentStartAddr + curX + curY * 0x10, sizeMode);
         moveCursor(win, SHIFT_LEFT);
-        loadedFile->saved = 0;
+        file->saved = 0;
         break;
     //copy
     case 'q':
 		clipboardValue = 0;
-        for(i = 0; i < sizeMode; i++)
-            clipboardValue |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+		for (i = 0; i < sizeMode; i++) {
+			u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+			clipboardValue |= *bt << (i * 8);
+
+		}
         break;
     //paste
     case 'v':
         //prepare undo item
         prev = 0;
-        for(i = 0; i < sizeMode; i++)
-            prev |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+		for (i = 0; i < sizeMode; i++) {
+			u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+			prev |= *bt << (i * 8);
+		}
 
         addToUndoList(CHANGE_BASIC, currentStartAddr + curX + curY * 0x10, prev, clipboardValue);
 
         //write new value
         for(i = 0; i < sizeMode; i++)
         {
-            if(endianMode) //little endian
-				loadedFile->content[currentStartAddr + curX + i + curY * 0x10] = (clipboardValue >> (i*8)) & 0xFF;
-            else
-				loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] = (clipboardValue >> (i*8)) & 0xFF;
-			loadedFile->saved = 0;
+			if (endianMode) { //little endian
+				byte bt = (clipboardValue >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, currentStartAddr + curX + i + curY * 0x10, &bt);
+			}
+			else {
+				byte bt = (clipboardValue >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10, &bt);
+			}
+			file->saved = 0;
         }
         break;
     //fast overwrite
@@ -263,28 +267,34 @@ int hexInput(int ch, WINDOW* win, WINDOW* statBar)
             fastTypeMode = sizeMode*2;
         }
         if(ch < 'A')
-            fastOverwriteValue |= (unsigned long long)(ch - '0')  << ((fastTypeMode-1)*4);
+            fastOverwriteValue |= (u64)(ch - '0')  << ((fastTypeMode-1)*4);
         else
-            fastOverwriteValue |= (unsigned long long)(ch - 'a' + 0x0A)  << ((fastTypeMode-1)*4);
+            fastOverwriteValue |= (u64)(ch - 'a' + 0x0A)  << ((fastTypeMode-1)*4);
         fastTypeMode--;
         if(!fastTypeMode)
         {
             //prepare undo item
             prev = 0;
-            for(i = 0; i < sizeMode; i++)
-                prev |= (unsigned long long)loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] << (i*8);
+			for (i = 0; i < sizeMode; i++) {
+				u64* bt = ArrayList_Get(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10);
+				prev |= *bt << (i * 8);
+			}
 
             addToUndoList(CHANGE_BASIC, currentStartAddr + curX + curY * 0x10, prev, fastOverwriteValue);
 
             //write new value
             for(i = 0; i < sizeMode; i++)
             {
-                if(endianMode) //little endian
-					loadedFile->content[currentStartAddr + curX + i + curY * 0x10] = (fastOverwriteValue >> (i*8)) & 0xFF;
-                else
-					loadedFile->content[currentStartAddr + curX + sizeMode-i-1 + curY * 0x10] = (fastOverwriteValue >> (i*8)) & 0xFF;
+				if (endianMode) { //little endian
+					byte bt = (fastOverwriteValue >> (i * 8)) & 0xFF;
+					ArrayList_Set(&file->content, currentStartAddr + curX + i + curY * 0x10, &bt);
+				}
+				else {
+					byte bt = (fastOverwriteValue >> (i * 8)) & 0xFF;
+					ArrayList_Set(&file->content, currentStartAddr + curX + sizeMode - i - 1 + curY * 0x10, &bt);
+				}
             }
-            loadedFile->saved = 0;
+            file->saved = 0;
             //shift cursor
             moveCursor(win, SHIFT_RIGHT);
 
@@ -330,16 +340,17 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 		{
 			for (k = 0; k < sizeMode * 2; k += 2)
 			{
-				if (loadedFile->size > currentStartAddr + (i - 2) * 0x10 + j + k / 2)
-				{
+				if (file->content.size > currentStartAddr + (i - 2) * 0x10 + j + k / 2) {
 					//cursor highlight on
 					wattron(win, (curX == j) && (curY == i - 2) ? COLOR_CURSOR : COLOR_NORMAL);
 
 					//handle endianness
-					if (endianMode)
-						content = loadedFile->content[currentStartAddr + (i - 2) * 0x10 + j + (sizeMode - k / 2 - 1)];
-					else
-						content = loadedFile->content[currentStartAddr + (i - 2) * 0x10 + j + k / 2];
+					if (endianMode) {
+						content = *(unsigned char*)ArrayList_Get(&file->content, currentStartAddr + (i - 2) * 0x10 + j + (sizeMode - k / 2 - 1));
+					}
+					else {
+						content = *(unsigned char*)ArrayList_Get(&file->content, currentStartAddr + (i - 2) * 0x10 + j + k / 2);
+					}
 					//print hex
 					mvwprintw(win, i + tm, lm + 12 + j / sizeMode * (sizeMode * 2 + 1) + k, "%02X", content);
 					//print ascii
@@ -385,11 +396,11 @@ void moveCursor(WINDOW* win, int direction)
 	else if (direction == DOWN)
 	{
 		curY++;
-		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < loadedFile->size)
+		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < file->content.size)
 		{
 			if (curY > h - 4 - bm - tm)
 			{
-				if (currentStartAddr < loadedFile->size)
+				if (currentStartAddr < file->content.size)
 					currentStartAddr += k;
 				curY = h - 4 - bm - tm;
 			}
@@ -400,7 +411,7 @@ void moveCursor(WINDOW* win, int direction)
 	else if (direction == RIGHT)
 	{
 		curX += sizeMode;
-		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < loadedFile->size)
+		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < file->content.size)
 		{
 			if (curX >= k) curX = k - sizeMode;
 		}
@@ -415,17 +426,17 @@ void moveCursor(WINDOW* win, int direction)
 	else if (direction == SHIFT_RIGHT)
 	{
 		curX += sizeMode;
-		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < loadedFile->size)
+		if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < file->content.size)
 		{
 			if (curX >= k)
 			{
 				curX = 0;
 				curY++;
-				if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < loadedFile->size)
+				if ((currentStartAddr + curX + sizeMode - 1 + curY * k) < file->content.size)
 				{
 					if (curY > h - 4 - bm - tm)
 					{
-						if (currentStartAddr < loadedFile->size)
+						if (currentStartAddr < file->content.size)
 							currentStartAddr += k;
 						curY = h - 4 - bm - tm;
 					}
@@ -473,11 +484,11 @@ void gotoAddressMenu(WINDOW* win ,WINDOW* statBar)
     echo();
     nocbreak();
 
-    unsigned long long addr = currentStartAddr;
+    u64 addr = currentStartAddr;
     mvwprintw(statBar, 0, 0, "Go to address: ");
     wscanw(statBar, "%X", &addr);
 
-    if(addr < loadedFile->size)
+    if(addr < file->content.size)
     {
         currentStartAddr = addr & ~0xF;
         curX = addr & 0xF & ~(sizeMode-1);
@@ -485,7 +496,7 @@ void gotoAddressMenu(WINDOW* win ,WINDOW* statBar)
     }
     else
     {
-        currentStartAddr = (loadedFile->size - (h-3)*0x10) & ~0xF;
+        currentStartAddr = (file->content.size - (h-3)*0x10) & ~0xF;
         curX = 0;
         curY = 0;
         wclear(statBar);
@@ -499,31 +510,20 @@ void gotoAddressMenu(WINDOW* win ,WINDOW* statBar)
 
 void insertData(unsigned long position, int size)
 {
-	if (loadedFile->capacity <= loadedFile->size)
-	{
-		loadedFile->content = realloc(loadedFile->content, loadedFile->size * 2);
-		loadedFile->capacity = loadedFile->size * 2;
+	char data = 0;
+	for (long i = position; i < position + size; i++) {
+		ArrayList_Insert(&file->content, i, &data);
 	}
-
-	for (long i = loadedFile->size + size - 1; i > position + size - 1; i--)
-	{
-		loadedFile->content[i] = loadedFile->content[i - size];
-	}
-    loadedFile->size += size;
-	for (long i = position; i < position + size; i++)
-		loadedFile->content[i] = 0;
 }
 
 void deleteData(unsigned long position, int size)
 {
-	if (loadedFile->size - size < 1)
+	if (file->content.size - size < 1)
 		return;
 
-	for (int i = position; i < loadedFile->size - size; i++)
-	{
-		loadedFile->content[i] = loadedFile->content[i + size];
+	for (int i = position; i < file->content.size - size; i++) {
+		ArrayList_Remove(&file->content, position);
 	}
-    loadedFile->size -= size;
 }
 
 void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar)
@@ -532,13 +532,13 @@ void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar)
 	echo();
 	nocbreak();
 
-	char* text = (char*)malloc(TEXT_BUFFER_SIZE * sizeof(char));
+	char text[TEXT_BUFFER_SIZE];
 	int len = TEXT_BUFFER_SIZE;
-	unsigned long long addr;
+	u64 addr;
 	if (searchMode == SEARCH_TEXT)
 	{
 		mvwprintw(statBar, 0, 0, "Search text: ");
-		wscanw(statBar, "%s", text);
+		wscanw(statBar, MATCH_ANY_PATTERN, text);
 		len = strlen(text);
 		addr = searchData(currentStartAddr + curX + curY * 0x10, (unsigned char*)text, len);
 	}
@@ -547,7 +547,7 @@ void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar)
 		mvwprintw(statBar, 0, 0, "Search data: ");
 		wscanw(statBar, "%s", text);
 		len = strlen(text);
-		unsigned char* t = (unsigned char*)malloc((int)(len / 2));
+		unsigned char t[64];
 		unsigned int i, h1, h2, r;
 		for (i = 0; i < len / 2; i++)
 		{
@@ -560,7 +560,7 @@ void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar)
 		addr = searchData(currentStartAddr + curX + curY * 0x10, t, len / 2);
 	}
 
-	if (addr < loadedFile->size)
+	if (addr < file->content.size)
 	{
 		currentStartAddr = addr & ~0xF;
 		curX = ((addr & 0xF) / sizeMode)*sizeMode;
@@ -571,21 +571,21 @@ void searchMenu(int searchMode, WINDOW* win, WINDOW* statBar)
 		wclear(statBar);
 		mvwprintw(statBar, 0, 0, "Data was not found!");
 	}
-
 	noecho();
 	cbreak();
 	wrefresh(statBar);
 }
 
-unsigned long long searchData(int cursorPos, unsigned char* dat, int datSize)
+u64 searchData(int cursorPos, byte* dat, int datSize)
 {
-	unsigned long long i, j, t;
+	u64 i, j, t;
 	i = cursorPos;
-	while (i < loadedFile->size - datSize)
+	while (i < file->content.size - datSize)
 	{
 		j = 0;
 		t = i;
-		while (dat[j] == loadedFile->content[t])
+		byte* content = ArrayList_Get(&file->content, t);
+		while (dat[j] == *content)
 		{
 			t++;
 			j++;
@@ -594,31 +594,28 @@ unsigned long long searchData(int cursorPos, unsigned char* dat, int datSize)
 		}
 		i++;
 	}
-	return loadedFile->size + 1;
+	return file->content.size + 1;
 }
 
-void addToUndoList(int type, unsigned long long address, unsigned long long prev_val, unsigned long long new_val)
+void addToUndoList(int type, u64 address, u64 prev_val, u64 new_val)
 {
-    if (type == CHANGE_INCREMENT && undoList[numUndos-1].type == CHANGE_INCREMENT && undoList[numUndos-1].address == address && undoList[numUndos-1].val_size == sizeMode)
-    {
-        undoList[numUndos-1].new_val = new_val;
+	Change* lastUndo = numUndos <= 0 ? NULL : ArrayList_Get(&undoList, numUndos - 1);
+    if (type == CHANGE_INCREMENT && lastUndo != NULL && lastUndo->type == CHANGE_INCREMENT && lastUndo->address == address && lastUndo->val_size == sizeMode) {
+        lastUndo->new_val = new_val;
     }
     else
     {
-        undoList[numUndos].address = address;
-        undoList[numUndos].prev_val = prev_val;
-        undoList[numUndos].new_val = new_val;
-        undoList[numUndos].type = type;
-        undoList[numUndos].val_size = sizeMode;
-        undoList[numUndos].endian = endianMode;
-        undoList[numUndos].saved = loadedFile->saved;
+		Change newChange;
+        newChange.address = address;
+		newChange.prev_val = prev_val;
+		newChange.new_val = new_val;
+		newChange.type = type;
+		newChange.val_size = sizeMode;
+		newChange.endian = endianMode;
+		newChange.saved = file->saved;
+		ArrayList_Add(&undoList, &newChange);
         numUndos++;
         numUndoRedos++;
-        if (numUndos >= 1000)
-        {
-            numUndos = 0;
-            numUndoRedos = 0;
-        }
     }
 }
 
@@ -627,7 +624,7 @@ void undo(WINDOW* statBar)
     if (numUndos <= 0)
         return;
 
-	Change* change = &undoList[numUndos - 1];
+	Change* change = ArrayList_Get(&undoList, numUndos - 1);
 
 	if (change->type == CHANGE_INSERT)
 	{
@@ -644,13 +641,17 @@ void undo(WINDOW* statBar)
 		int i;
 		for (i = 0; i < change->val_size; i++)
 		{
-			if (change->endian) //little endian
-				loadedFile->content[change->address + i] = (change->prev_val >> (i * 8)) & 0xFF;
-			else
-				loadedFile->content[change->address + change->val_size - i - 1] = (change->prev_val >> (i * 8)) & 0xFF;
+			if (change->endian) { //little endian
+				byte bt = (change->prev_val >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, change->address + i, &bt);
+			}
+			else {
+				byte bt = (change->prev_val >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, change->address + change->val_size - i - 1, &bt);
+			}
 		}
 	}
-    loadedFile->saved = change->saved;
+    file->saved = change->saved;
     numUndos--;
     mvwprintw(statBar, 0, 0, "Undone!");
     wrefresh(statBar);
@@ -661,7 +662,7 @@ void redo(WINDOW* statBar)
     if (numUndoRedos <= numUndos)
         return;
 
-	Change* change = &undoList[numUndos];
+	Change* change = ArrayList_Get(&undoList, numUndos - 1);
 
 	if (change->type == CHANGE_DELETE)
 	{
@@ -678,13 +679,17 @@ void redo(WINDOW* statBar)
 		int i;
 		for (i = 0; i < change->val_size; i++)
 		{
-			if (change->endian) //little endian
-				loadedFile->content[change->address + i] = (change->new_val >> (i * 8)) & 0xFF;
-			else
-				loadedFile->content[change->address + change->val_size - i - 1] = (change->new_val >> (i * 8)) & 0xFF;
+			if (change->endian) { //little endian
+				byte bt = (change->new_val >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, change->address + i, &bt);
+			}
+			else {
+				byte bt = (change->new_val >> (i * 8)) & 0xFF;
+				ArrayList_Set(&file->content, change->address + change->val_size - i - 1, &bt);
+			}
 		}
 	}
-    loadedFile->saved = 0;
+    file->saved = 0;
     numUndos++;
     mvwprintw(statBar, 0, 0, "Redone!");
     wrefresh(statBar);
@@ -692,7 +697,7 @@ void redo(WINDOW* statBar)
 
 void createPatchFromUndoList(WINDOW* statBar)
 {
-    if (loadedFile->saved > 0 || numUndos == 0)
+    if (file->saved > 0 || numUndos == 0)
         return;
 
     wclear(statBar);
@@ -711,28 +716,30 @@ void createPatchFromUndoList(WINDOW* statBar)
     // create patch from changes after saving
     int i = numUndos - 1;
     char* lastFile = NULL;
-
+	Change* lastUndo = ArrayList_Get(&undoList, i);
     // find i where we saved
     while (i >= 0)
     {
-        if (undoList[i].saved)
+        if (lastUndo->saved)
             break;
         i--;
     }
     while (i < numUndos)
     {
         int j;
-        for(j = 0; j < undoList[i].val_size; j++)
+        for(j = 0; j < lastUndo->val_size; j++)
         {
-            unsigned long long pos;
+            u64 pos;
             unsigned char content;
 
-            if(undoList[numUndos].endian) //little endian
-                pos = undoList[i].address + j;
-            else
-                pos = undoList[i].address + undoList[i].val_size-j-1;
+			if (lastUndo->endian) { //little endian
+				pos = lastUndo->address + j;
+			}
+			else {
+				pos = lastUndo->address + lastUndo->val_size - j - 1;
+			}
 
-            content = (undoList[i].new_val >> (j*8)) & 0xFF;
+            content = (lastUndo->new_val >> (j*8)) & 0xFF;
             fprintf(f, "file[0x%llX] = 0x%02X\n", pos, content);
         }
         i++;

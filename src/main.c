@@ -45,7 +45,7 @@ void toggleMode();
 void initSubMenu();
 void drawMenu();
 void drawSubMenu();
-unsigned char* loadFile(char* filename);
+int loadFile(char* filename);
 void saveFile();
 int patchFile(const char* patchname);
 void computeMD5();
@@ -56,6 +56,7 @@ void getPluginDir(char* pluginDir);
 void loadPlugins();
 void invokePluginCallback(lua_State* L, char* name);
 void invokeActivePluginCallbacks(char* name);
+int tryInvokeLuaFunction(lua_State* L, char* name);
 Plugin* getPluginByLuaState(lua_State* L);
 void registerLuaCallables(lua_State* L);
 int l_activatePlugin(lua_State* L);
@@ -70,6 +71,9 @@ int l_getFilePath(lua_State* L);
 int l_getFileExtension(lua_State* L);
 int l_registerMenuCallback(lua_State* L);
 int l_showConsole(lua_State* L);
+int l_getKey(lua_State* L);
+int l_getTextInput(lua_State* L);
+int l_getChoiceInput(lua_State* L);
 
 static char* newfile = "new";
 
@@ -82,11 +86,19 @@ static int quit = 0;
 static int sub_menu_orientation = VERTICAL;
 static int sub_menu_cursor = 0;
 static ArrayList subMenuItems;
+static char lastPressedKey[2] = { 0 };
 
 static WINDOW* win = NULL;
 static WINDOW* menuBar = NULL;
 static WINDOW* subMenu = NULL;
 static WINDOW* statBar = NULL;
+
+void printPlugins(int c) {
+	for (int i = 0; i < plugins.size; i++) {
+		Plugin* p = ArrayList_Get(&plugins, i);
+		cprintf("PLUGINS", "%d. name: %s, active: %d, err: %d", c, p->name, p->active, p->error);
+	}
+}
 
 int main(int argc, char* argv[]) {
 	patchFailed = 0;
@@ -123,7 +135,7 @@ int main(int argc, char* argv[]) {
 
 	// read arguments
 	if (argc > 1) {
-		if ((file.content = loadFile(argv[1]))) {
+		if ((loadFile(argv[1]))) {
 			file.loaded = 1;
 			file.saved = 1;
 			invokeActivePluginCallbacks("onFileLoad");
@@ -136,9 +148,9 @@ int main(int argc, char* argv[]) {
 
 	// open up empty 1 byte file
 	if (!file.loaded) {
-		file.content = (byte*)malloc(50);
-		file.size = 1;
-		file.capacity = 50;
+		byte data = 0;
+		file.content = ArrayList_New(50, sizeof(byte));
+		ArrayList_Add(&file.content, &data);
 		file.saved = 0;
 		file.loaded = 2;
 		strcpy(file.name, newfile);
@@ -163,15 +175,15 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (c != -1) {
+			lastPressedKey[0] = c;
+			invokeActivePluginCallbacks("onInput");
 			redraw();
 		}
 	}
 
 	endwin();
-	if (file.content)
-		free(file.content);
+	ArrayList_Delete(&file.content);
 	ArrayList_Delete(&subMenuItems);
-
 	return 0;
 }
 
@@ -248,10 +260,13 @@ int input() {
 		sub_menu_cursor = (sub_menu_cursor + 1) % subMenuItems.size;
 		break;
 	case KEY_PPAGE:
-		sub_menu_cursor = sub_menu_cursor == 0 ? subMenuItems.size : (sub_menu_cursor - 1) % subMenuItems.size;
+		sub_menu_cursor = sub_menu_cursor == 0 ? subMenuItems.size - 1 : (sub_menu_cursor - 1) % subMenuItems.size;
 		break;
 	case '\n':
 	{
+		if (mode != HEX_EDITOR) {
+			break;
+		}
 		SubMenuItem* smi = ArrayList_Get(&subMenuItems, sub_menu_cursor);
 		if (smi->handlerType == HANDLER_C) {
 			smi->cHandler();
@@ -315,7 +330,7 @@ void saveFile() {
 	FILE* fp = fopen(file.name, "wb");
 	if (fp) {
 		invokeActivePluginCallbacks("onFileSave");
-		fwrite(file.content, sizeof(char), file.size, fp);
+		fwrite(file.content.ptr, sizeof(char), file.content.size, fp);
 		fclose(fp);
 		file.saved = 1;
 	}
@@ -352,12 +367,12 @@ void computeMD5() {
 	u32 c0 = 0x98badcfe;
 	u32 d0 = 0x10325476;
 
-	size_t len = ((((file.size + 8) / 64) + 1) * 64) - 8;
+	size_t len = ((((file.content.size + 8) / 64) + 1) * 64) - 8;
 	byte* message = calloc(len + 64, sizeof(byte));
-	memcpy(message, file.content, file.size);
+	memcpy(message, file.content.ptr, file.content.size);
 
-	message[file.size] = 0x80;
-	u32 bitlen = file.size * 8;
+	message[file.content.size] = 0x80;
+	u32 bitlen = file.content.size * 8;
 	memcpy(message + len, &bitlen, 4);
 
 	for (size_t chunk = 0; chunk < len; chunk += 64) {
@@ -414,7 +429,7 @@ void drawMenu() {
 
 	wclear(menuBar);
 	mvwprintw(menuBar, 0, 2, "%s", file.name);
-	mvwprintw(menuBar, 0, w - 19, "Size: %8X Byte", file.size);
+	mvwprintw(menuBar, 0, w - 19, "Size: %8X Byte", file.content.size);
 
 	if (patchFailed) {
 		if (patchFailed == 1)
@@ -497,31 +512,37 @@ void drawSubMenu() {
 	wrefresh(subMenu);
 }
 
-unsigned char* loadFile(char* filename) {
+int loadFile(char* filename) {
 	FILE* fp;
-	long lSize;
-	unsigned char* buffer;
+	long size;
+	byte* buffer;
 	size_t result;
 
 	fp = fopen(filename, "rb");
-	if (fp == NULL) { return NULL; }
+	if (fp == NULL) {
+		return 0; 
+	}
 
 	fseek(fp, 0, SEEK_END);
-	lSize = ftell(fp);
+	size = ftell(fp);
 	rewind(fp);
 
-	buffer = (unsigned char*)malloc(sizeof(unsigned char) * 2 * lSize);
-	if (buffer == NULL) { return NULL; }
+	buffer = malloc(sizeof(byte) * size * 2);
+	if (buffer == NULL) { 
+		return 0; 
+	}
 
-	result = fread(buffer, 1, lSize, fp);
-	if (result != lSize) { return NULL; }
+	result = fread(buffer, 1, size, fp);
+	if (result != size) {
+		return 0;
+	}
 
+	file.content = ArrayList_NewFromArray(buffer, size, sizeof(byte));
 	strcpy(file.name, filename);
-	file.size = lSize;
-	file.capacity = lSize * 2;
 
+	free(buffer);
 	fclose(fp);
-	return buffer;
+	return 1;
 }
 
 int patchFile(const char* patchname) {
@@ -594,12 +615,13 @@ void loadPlugins() {
 				luaL_openlibs(p.L);
 				registerLuaCallables(p.L);
 				ArrayList_Add(&plugins, &p);
+				Plugin* pptr = ArrayList_GetLast(&plugins);
 				if (luaL_dofile(p.L, path) != LUA_OK) {
-					p.error = 1;
+					pptr->error = 1;
 					cprintf(p.name, "Error loading %s\n", lua_tostring(p.L, -1));
 				}
 				else {
-					p.error = 0;
+					pptr->error = 0;
 					cprintf(p.name, "Loaded %s\n", ent->d_name);
 				}
 			}
@@ -619,8 +641,8 @@ void invokePluginCallback(lua_State* L, char* name) {
 void invokeActivePluginCallbacks(char* name) {
 	for (int i = 0; i < plugins.size; i++) {
 		Plugin* curr = ArrayList_Get(&plugins, i);
-		if (!curr->error && curr->active && lua_getglobal(curr->L, name) == LUA_TFUNCTION) {
-			if (lua_pcall(curr->L, 0, 0, 0) != LUA_OK) {
+		if (!curr->error && curr->active) {
+			if (!tryInvokeLuaFunction(curr->L, name)) {
 				curr->error = 1;
 				curr->active = 0;
 				cprintf(curr->name, "Error in %s\n", lua_tostring(curr->L, -1));
@@ -628,6 +650,18 @@ void invokeActivePluginCallbacks(char* name) {
 			}
 		}
 	}
+}
+
+int tryInvokeLuaFunction(lua_State* L, char* name) {
+	if (lua_getglobal(L, name) == LUA_TFUNCTION) {
+		if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+			return 0;
+		}
+	}
+	else {
+		lua_pop(L, 1);
+	}
+	return 1;
 }
 
 void registerLuaCallables(lua_State* L) {
@@ -641,6 +675,8 @@ void registerLuaCallables(lua_State* L) {
 	lua_register(L, "getFileExtension", l_getFileExtension);
 	lua_register(L, "registerMenuCallback", l_registerMenuCallback);
 	lua_register(L, "showConsole", l_showConsole);
+	lua_register(L, "getKey", l_getKey);
+	lua_register(L, "getTextInput", l_getTextInput);
 
 	luaL_newmetatable(L, "array");
 	lua_pushcfunction(L, l_getContents);
@@ -684,10 +720,13 @@ int l_setMargins(lua_State* L)		// margins(l, r, t, b)
 int l_getContents(lua_State* L)		// file[index]
 {
 	int index = luaL_checknumber(L, 2);
-	if (index < file.size)
-		lua_pushnumber(L, file.content[index]);
-	else
+	if (index < file.content.size) {
+		byte* value = ArrayList_Get(&file.content, index);
+		lua_pushnumber(L, *value);
+	}
+	else {
 		lua_pushnil(L);
+	}
 	return 1;
 }
 
@@ -695,8 +734,8 @@ int l_setContents(lua_State* L)		// file[index] = value
 {
 	int index = luaL_checknumber(L, 2);
 	byte value = luaL_checknumber(L, 3);
-	if (index < file.size) {
-		file.content[index] = value;
+	if (index < file.content.size) {
+		ArrayList_Set(&file.content, index, &value);
 		file.saved = 0;
 	}
 	return 0;
@@ -704,12 +743,12 @@ int l_setContents(lua_State* L)		// file[index] = value
 
 int l_log(lua_State* L) {
 	char* c = luaL_checkstring(L, 1);
-	clog(getPluginByLuaState(L)->name, "%s", c);
+	cprintf(getPluginByLuaState(L)->name, "%s", c);
 	return 0;
 }
 
 int l_getFileSize(lua_State* L) {
-	lua_pushnumber(L, file.size);
+	lua_pushnumber(L, file.content.size);
 	return 1;
 }
 
@@ -767,4 +806,25 @@ int l_registerMenuCallback(lua_State* L) {
 int l_showConsole(lua_State* L) {
 	mode = CONSOLE;
 	return 0;
+}
+
+int l_getKey(lua_State* L) {
+	lua_pushstring(L, lastPressedKey);
+	return 1;
+}
+
+int l_getTextInput(lua_State* L) {
+	char* message = luaL_checkstring(L, 1);
+	char text[TEXT_BUFFER_SIZE];
+
+	echo();
+	nocbreak();
+
+	mvwprintw(statBar, 0, 0, "%s: ", message);
+	wscanw(statBar, MATCH_ANY_PATTERN, text);
+	lua_pushstring(L, text);
+
+	noecho();
+	cbreak();
+	return 1;
 }

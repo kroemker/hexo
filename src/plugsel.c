@@ -23,7 +23,7 @@ void plugSelLoad(ArrayList* _plugins)
 	cursor = 0;
 }
 
-int plugSelInput(int c) 
+int plugSelInput(int c)
 {
 	Plugin* curr = ArrayList_Get(plugins, cursor);
 	switch (c)
