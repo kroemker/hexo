@@ -36,6 +36,7 @@
 #define SUB_MENU_WIDTH_THRESHOLD	87
 
 // general
+void freePlugins();
 int input();
 void setupWindows();
 void redraw();
@@ -73,7 +74,15 @@ int l_registerMenuCallback(lua_State* L);
 int l_showConsole(lua_State* L);
 int l_getKey(lua_State* L);
 int l_getTextInput(lua_State* L);
-int l_getChoiceInput(lua_State* L);
+int l_newWindow(lua_State* L);
+int l_setVisible(lua_State* L);
+int l_printWindow(lua_State* L);
+int l_clearWindow(lua_State* L);
+int l_getEditorBounds(lua_State* L);
+int l_getWindowBounds(lua_State* L);
+int l_setWindowBounds(lua_State* L);
+int l_getCursorWindowPosition(lua_State* L);
+int l_getCursorFilePosition(lua_State* L);
 
 static char* newfile = "new";
 
@@ -181,10 +190,27 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	invokeActivePluginCallbacks("onClose");
 	endwin();
 	ArrayList_Delete(&file.content);
 	ArrayList_Delete(&subMenuItems);
 	return 0;
+}
+
+void freePlugins() {
+	for (int i = 0; i < subMenuItems.size; i++) {
+		SubMenuItem* smi = ArrayList_Get(&subMenuItems, i);
+		if (smi->handlerType == HANDLER_LUA) {
+			ArrayList_Remove(&subMenuItems, i);
+			i--;
+		}
+	}
+
+	for (int i = 0; i < plugins.size; i++) {
+		Plugin* p = ArrayList_Get(&plugins, i);
+		ArrayList_Delete(&p->windows);
+	}
+	ArrayList_Delete(&plugins);
 }
 
 void setupWindows() {
@@ -244,6 +270,9 @@ int input() {
 	int ch = wgetch(win);
 	switch (ch) {
 	case KEY_F(5):
+		freePlugins();
+		loadPlugins();
+		break;
 	case KEY_RESIZE:
 		resize();
 		break;
@@ -280,9 +309,30 @@ int input() {
 	return ch;
 }
 
+void drawPluginWindows() {
+	for (int i = 0; i < plugins.size; i++) {
+		Plugin* p = ArrayList_Get(&plugins, i);
+		for (int w = 0; w < p->windows.size; w++) {
+			PluginWindow* pw = ArrayList_Get(&p->windows, w);
+			if (pw->visible) {
+				wclear(pw->cursesWindow);
+				for (int k = 0; k < pw->printCommands.size; k++) {
+					PrintCommand* pc = ArrayList_Get(&pw->printCommands, k);
+					wattron(pw->cursesWindow, COLOR_PAIR(pc->color));
+					mvwprintw(pw->cursesWindow, pc->y, pc->x, "%s", pc->content);
+					wattroff(pw->cursesWindow, COLOR_PAIR(pc->color));
+				}
+				box(pw->cursesWindow, 0, 0);
+				wrefresh(pw->cursesWindow);
+			}
+		}
+	}
+}
+
 void redraw() {
 	if (mode == HEX_EDITOR) {
 		hexDraw(win, statBar);
+		drawPluginWindows();
 		drawSubMenu();
 	}
 	else if (mode == PLUGIN_SELECTOR) {
@@ -608,12 +658,14 @@ void loadPlugins() {
 				Plugin p;
 				// initialize plugin
 				char path[128] = { 0 };
+				p.active = 0;
 				strcat(path, pluginDir);
 				strcat(path, ent->d_name);
 				strcpy(p.name, ent->d_name);
 				p.L = luaL_newstate();
 				luaL_openlibs(p.L);
 				registerLuaCallables(p.L);
+				p.windows = ArrayList_New(1, sizeof(PluginWindow));
 				ArrayList_Add(&plugins, &p);
 				Plugin* pptr = ArrayList_GetLast(&plugins);
 				if (luaL_dofile(p.L, path) != LUA_OK) {
@@ -628,8 +680,9 @@ void loadPlugins() {
 		}
 		closedir(dir);
 	}
-	else
+	else {
 		cprintf("Plugin Loader", "Plugin directory \'%s\' not found!\n", pluginDir);
+	}
 }
 
 void invokePluginCallback(lua_State* L, char* name) {
@@ -677,6 +730,15 @@ void registerLuaCallables(lua_State* L) {
 	lua_register(L, "showConsole", l_showConsole);
 	lua_register(L, "getKey", l_getKey);
 	lua_register(L, "getTextInput", l_getTextInput);
+	lua_register(L, "newWindow", l_newWindow);
+	lua_register(L, "setVisible", l_setVisible);
+	lua_register(L, "printWindow", l_printWindow);
+	lua_register(L, "clearWindow", l_clearWindow);
+	lua_register(L, "getEditorBounds", l_getEditorBounds);
+	lua_register(L, "getWindowBounds", l_getWindowBounds);
+	lua_register(L, "setWindowBounds", l_setWindowBounds);
+	lua_register(L, "getCursorWindowPosition", l_getCursorWindowPosition);
+	lua_register(L, "getCursorFilePosition", l_getCursorFilePosition);
 
 	luaL_newmetatable(L, "array");
 	lua_pushcfunction(L, l_getContents);
@@ -826,5 +888,114 @@ int l_getTextInput(lua_State* L) {
 
 	noecho();
 	cbreak();
+	return 1;
+}
+
+int l_newWindow(lua_State* L) {
+	int x = luaL_checkinteger(L, 1);
+	int y = luaL_checkinteger(L, 2);
+	int w = luaL_checkinteger(L, 3);
+	int h = luaL_checkinteger(L, 4);
+	Plugin* p = getPluginByLuaState(L);
+	PluginWindow pwindow;
+	pwindow.visible = 1;
+	pwindow.cursesWindow = newwin(y, x, h, w);
+	pwindow.printCommands = ArrayList_New(4, sizeof(PrintCommand));
+	ArrayList_Add(&p->windows, &pwindow);
+	lua_pushinteger(L, p->windows.size - 1);
+	return 1;
+}
+
+int l_setVisible(lua_State* L) {
+	int window = luaL_checkinteger(L, 1);
+	int visible = lua_toboolean(L, 2);
+
+	Plugin* p = getPluginByLuaState(L);
+	if (window >= 0 && window < p->windows.size) {
+		PluginWindow* pwindow = ArrayList_Get(&p->windows, window);
+		pwindow->visible = visible;
+	}
+	return 0;
+}
+
+int l_printWindow(lua_State* L) {
+	int window = luaL_checkinteger(L, 1);
+	int x = luaL_checkinteger(L, 2);
+	int y = luaL_checkinteger(L, 3);
+	char* message = luaL_checkstring(L, 4);
+	int color = luaL_checkinteger(L, 5);
+
+	Plugin* p = getPluginByLuaState(L);
+	if (window >= 0 && window < p->windows.size) {
+		PluginWindow* pwindow = ArrayList_Get(&p->windows, window);
+		PrintCommand pcommand;
+		pcommand.x = x;
+		pcommand.y = y;
+		pcommand.color = color;
+		strcpy(pcommand.content, message);
+		ArrayList_Add(&pwindow->printCommands, &pcommand);
+	}
+	return 0;
+}
+
+int l_clearWindow(lua_State* L) {
+	int window = luaL_checkinteger(L, 1);
+
+	Plugin* p = getPluginByLuaState(L);
+	if (window >= 0 && window < p->windows.size) {
+		PluginWindow* pwindow = ArrayList_Get(&p->windows, window);
+		ArrayList_Clear(&pwindow->printCommands);
+	}
+	return 0;
+}
+
+int l_getEditorBounds(lua_State* L) {
+	lua_pushinteger(L, win->_begx);
+	lua_pushinteger(L, win->_begy);
+	lua_pushinteger(L, win->_maxx);
+	lua_pushinteger(L, win->_maxy);
+	return 4;
+}
+
+int l_getWindowBounds(lua_State* L) {
+	int window = luaL_checkinteger(L, 1);
+	Plugin* p = getPluginByLuaState(L);
+	if (window >= 0 && window < p->windows.size) {
+		PluginWindow* pwindow = ArrayList_Get(&p->windows, window);
+		lua_pushinteger(L, pwindow->cursesWindow->_begx);
+		lua_pushinteger(L, pwindow->cursesWindow->_begy);
+		lua_pushinteger(L, pwindow->cursesWindow->_maxx);
+		lua_pushinteger(L, pwindow->cursesWindow->_maxy);
+	}
+	return 4;
+}
+
+int l_setWindowBounds(lua_State* L) {
+	int window = luaL_checkinteger(L, 1);
+	int x = luaL_checkinteger(L, 2);
+	int y = luaL_checkinteger(L, 3);
+	int w = luaL_checkinteger(L, 4);
+	int h = luaL_checkinteger(L, 5);
+	Plugin* p = getPluginByLuaState(L);
+	if (window >= 0 && window < p->windows.size) {
+		PluginWindow* pwindow = ArrayList_Get(&p->windows, window);
+		wresize(pwindow->cursesWindow, h, w);
+		mvwin(pwindow->cursesWindow, y, x);
+	}
+	return 0;
+}
+
+int l_getCursorWindowPosition(lua_State* L) {
+	int x, y;
+	getCursorWindowPosition(&x, &y);
+	lua_pushinteger(L, x);
+	lua_pushinteger(L, y);
+	return 2;
+}
+
+int l_getCursorFilePosition(lua_State* L) {
+	int pos;
+	getCursorFilePosition(&pos);
+	lua_pushinteger(L, pos);
 	return 1;
 }

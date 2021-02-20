@@ -61,6 +61,8 @@ void addToUndoList(int type, u64 address, u64 prev_val, u64 new_val);
 void undo(WINDOW* statBar);
 void redo(WINDOW* statBar);
 void createPatchFromUndoList(WINDOW* statBar);
+void getCursorWindowPosition(int* x, int* y);
+void getCursorFilePosition(int* pos);
 
 void hexLoad(FileObject* f, WINDOW* win, WINDOW* statBar)
 {
@@ -749,4 +751,14 @@ void createPatchFromUndoList(WINDOW* statBar)
     cbreak();
     noecho();
     wrefresh(statBar);
+}
+
+
+void getCursorWindowPosition(int* x, int* y) {
+	*x = curX / sizeMode * (sizeMode * 2 + 1) + 12;
+	*y = curY + 2;
+}
+
+void getCursorFilePosition(int* pos) {
+	*pos = currentStartAddr + curX + curY * 0x10;
 }

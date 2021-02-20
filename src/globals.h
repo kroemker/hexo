@@ -51,12 +51,26 @@ typedef struct tFileObject {
 	u32 MD5[4];
 }FileObject;
 
+typedef struct tPrintCommand {
+	int x;
+	int y;
+	char content[128];
+	int color;
+} PrintCommand;
+
+typedef struct tPluginWindow {
+	int visible;
+	WINDOW* cursesWindow;
+	ArrayList printCommands;
+} PluginWindow;
+
 typedef struct tPlugin {
 	char name[64];
 	lua_State* L;
 	int active;
 	int error;
 	int baseEditor;
+	ArrayList windows;
 }Plugin;
 
 typedef struct tSubMenuItem {
