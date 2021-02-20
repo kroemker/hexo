@@ -102,13 +102,6 @@ static WINDOW* menuBar = NULL;
 static WINDOW* subMenu = NULL;
 static WINDOW* statBar = NULL;
 
-void printPlugins(int c) {
-	for (int i = 0; i < plugins.size; i++) {
-		Plugin* p = ArrayList_Get(&plugins, i);
-		cprintf("PLUGINS", "%d. name: %s, active: %d, err: %d", c, p->name, p->active, p->error);
-	}
-}
-
 int main(int argc, char* argv[]) {
 	patchFailed = 0;
 
@@ -124,6 +117,8 @@ int main(int argc, char* argv[]) {
 	COLOR_INIT_CURSOR();
 	COLOR_INIT_HIGHLIGHT();
 	COLOR_INIT_CALLER();
+	COLOR_INIT_ERROR();
+	COLOR_INIT_WARN();
 
 	setupWindows();
 
@@ -600,7 +595,7 @@ int patchFile(const char* patchname) {
 	luaL_openlibs(L);
 	registerLuaCallables(L);
 	if (luaL_dofile(L, patchname) != LUA_OK) {
-		cprintf("Patch", "Error patching %s\n", lua_tostring(L, -1));
+		cerrorf("Patch", "Error patching %s\n", lua_tostring(L, -1));
 		lua_close(L);
 		return 1;
 	}
@@ -670,18 +665,18 @@ void loadPlugins() {
 				Plugin* pptr = ArrayList_GetLast(&plugins);
 				if (luaL_dofile(p.L, path) != LUA_OK) {
 					pptr->error = 1;
-					cprintf(p.name, "Error loading %s\n", lua_tostring(p.L, -1));
+					cerrorf(p.name, "Error loading %s\n", lua_tostring(p.L, -1));
 				}
 				else {
 					pptr->error = 0;
-					cprintf(p.name, "Loaded %s\n", ent->d_name);
+					clogf(p.name, "Loaded %s\n", ent->d_name);
 				}
 			}
 		}
 		closedir(dir);
 	}
 	else {
-		cprintf("Plugin Loader", "Plugin directory \'%s\' not found!\n", pluginDir);
+		cwarnf("Plugin Loader", "Plugin directory \'%s\' not found!\n", pluginDir);
 	}
 }
 
@@ -698,8 +693,8 @@ void invokeActivePluginCallbacks(char* name) {
 			if (!tryInvokeLuaFunction(curr->L, name)) {
 				curr->error = 1;
 				curr->active = 0;
-				cprintf(curr->name, "Error in %s\n", lua_tostring(curr->L, -1));
-				cprintf(curr->name, "%s is removed from the list of active plugins\n", curr->name);
+				cerrorf(curr->name, "Error in %s\n", lua_tostring(curr->L, -1));
+				cerrorf(curr->name, "%s is removed from the list of active plugins\n", curr->name);
 			}
 		}
 	}
@@ -805,7 +800,7 @@ int l_setContents(lua_State* L)		// file[index] = value
 
 int l_log(lua_State* L) {
 	char* c = luaL_checkstring(L, 1);
-	cprintf(getPluginByLuaState(L)->name, "%s", c);
+	clogf(getPluginByLuaState(L)->name, "%s", c);
 	return 0;
 }
 
