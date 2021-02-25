@@ -46,10 +46,10 @@ static char endianness[] = {'B','L'};
 static int  endianMode;
 static int  sizeMode;
 
+HashMap highlights;
 static ArrayList undoList;
 static numUndos = 0;
 static numUndoRedos = 0;
-
 
 void moveCursor(WINDOW* win, int direction);
 u64 searchData(int cursorPos, byte* dat, int datSize);
@@ -62,7 +62,7 @@ void undo(WINDOW* statBar);
 void redo(WINDOW* statBar);
 void createPatchFromUndoList(WINDOW* statBar);
 void getCursorWindowPosition(int* x, int* y);
-void getCursorFilePosition(int* pos);
+void getCursorFilePosition(u64* pos);
 
 void hexLoad(FileObject* f, WINDOW* win, WINDOW* statBar)
 {
@@ -76,6 +76,7 @@ void hexLoad(FileObject* f, WINDOW* win, WINDOW* statBar)
     fastTypeMode = 0;
     clipboardValue = 0;
 	undoList = ArrayList_New(50, sizeof(Change));
+	highlights = HashMap_New(100, sizeof(u64), sizeof(int));
 }
 
 int hexInput(int ch, WINDOW* win, WINDOW* statBar)
@@ -340,18 +341,25 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 		int j = 0, k;
 		while (j < 0x10)
 		{
+			u64 curr = currentStartAddr + (i - 2) * 0x10 + j;
+			int* highlightColor = HashMap_Get(&highlights, &curr);
 			for (k = 0; k < sizeMode * 2; k += 2)
 			{
-				if (file->content.size > currentStartAddr + (i - 2) * 0x10 + j + k / 2) {
-					//cursor highlight on
-					wattron(win, (curX == j) && (curY == i - 2) ? COLOR_CURSOR : COLOR_NORMAL);
+				if (file->content.size >  curr + k / 2) {
+					//cursor + highlight on
+					if ((curX == j) && (curY == i - 2)) {
+						wattron(win, COLOR_CURSOR);
+					}
+					else if (highlightColor != NULL) {
+						wattron(win, COLOR_HIGHLIGHT(*highlightColor % 3));
+					}
 
 					//handle endianness
 					if (endianMode) {
-						content = *(unsigned char*)ArrayList_Get(&file->content, currentStartAddr + (i - 2) * 0x10 + j + (sizeMode - k / 2 - 1));
+						content = *(unsigned char*)ArrayList_Get(&file->content, curr + (sizeMode - k / 2 - 1));
 					}
 					else {
-						content = *(unsigned char*)ArrayList_Get(&file->content, currentStartAddr + (i - 2) * 0x10 + j + k / 2);
+						content = *(unsigned char*)ArrayList_Get(&file->content, curr + k / 2);
 					}
 					//print hex
 					mvwprintw(win, i + tm, lm + 12 + j / sizeMode * (sizeMode * 2 + 1) + k, "%02X", content);
@@ -361,11 +369,17 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 					else
 						mvwaddch(win, i + tm, asciiOffset + j + k / 2, content);
 
-					//cursor highlight off
-					wattroff(win, (curX == j) && (curY == i - 2) ? COLOR_CURSOR : COLOR_NORMAL);
+					//cursor + highlight off
+					if ((curX == j) && (curY == i - 2)) {
+						wattroff(win, COLOR_CURSOR);
+					}
+					else if (highlightColor != NULL) {
+						wattroff(win, COLOR_HIGHLIGHT(*highlightColor % 3));
+					}
 				}
-				else
+				else {
 					break;
+				}
 			}
 			j += sizeMode;
 		}
@@ -492,9 +506,7 @@ void gotoAddressMenu(WINDOW* win ,WINDOW* statBar)
 
     if(addr < file->content.size)
     {
-        currentStartAddr = addr & ~0xF;
-        curX = addr & 0xF & ~(sizeMode-1);
-        curY = 0;
+		setCursorPosition(addr);
     }
     else
     {
@@ -508,6 +520,14 @@ void gotoAddressMenu(WINDOW* win ,WINDOW* statBar)
     noecho();
     cbreak();
     wrefresh(statBar);
+}
+
+void setCursorPosition(u64 position) {
+	if (position < file->content.size) {
+		currentStartAddr = position & ~0xF;
+		curX = position & 0xF & ~(sizeMode - 1);
+		curY = 0;
+	}
 }
 
 void insertData(unsigned long position, int size)
@@ -759,6 +779,6 @@ void getCursorWindowPosition(int* x, int* y) {
 	*y = curY + 2;
 }
 
-void getCursorFilePosition(int* pos) {
+void getCursorFilePosition(u64* pos) {
 	*pos = currentStartAddr + curX + curY * 0x10;
 }

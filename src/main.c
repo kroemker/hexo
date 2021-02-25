@@ -83,6 +83,9 @@ int l_getWindowBounds(lua_State* L);
 int l_setWindowBounds(lua_State* L);
 int l_getCursorWindowPosition(lua_State* L);
 int l_getCursorFilePosition(lua_State* L);
+int l_setCursorFilePosition(lua_State* L);
+int l_mark(lua_State* L);
+int l_unmark(lua_State* L);
 
 static char* newfile = "new";
 
@@ -115,10 +118,12 @@ int main(int argc, char* argv[]) {
 
 	COLOR_INIT_NORMAL();
 	COLOR_INIT_CURSOR();
-	COLOR_INIT_HIGHLIGHT();
 	COLOR_INIT_CALLER();
 	COLOR_INIT_ERROR();
 	COLOR_INIT_WARN();
+	COLOR_INIT_HIGHLIGHT1();
+	COLOR_INIT_HIGHLIGHT2();
+	COLOR_INIT_HIGHLIGHT3();
 
 	setupWindows();
 
@@ -189,6 +194,7 @@ int main(int argc, char* argv[]) {
 	endwin();
 	ArrayList_Delete(&file.content);
 	ArrayList_Delete(&subMenuItems);
+	ArrayList_Delete(&highlights);
 	return 0;
 }
 
@@ -734,6 +740,9 @@ void registerLuaCallables(lua_State* L) {
 	lua_register(L, "setWindowBounds", l_setWindowBounds);
 	lua_register(L, "getCursorWindowPosition", l_getCursorWindowPosition);
 	lua_register(L, "getCursorFilePosition", l_getCursorFilePosition);
+	lua_register(L, "setCursorFilePosition", l_setCursorFilePosition);
+	lua_register(L, "mark", l_mark);
+	lua_register(L, "unmark", l_unmark);
 
 	luaL_newmetatable(L, "array");
 	lua_pushcfunction(L, l_getContents);
@@ -989,8 +998,27 @@ int l_getCursorWindowPosition(lua_State* L) {
 }
 
 int l_getCursorFilePosition(lua_State* L) {
-	int pos;
+	u64 pos;
 	getCursorFilePosition(&pos);
 	lua_pushinteger(L, pos);
 	return 1;
+}
+
+int l_setCursorFilePosition(lua_State* L) {
+	u64 pos = luaL_checkinteger(L, 1);
+	setCursorPosition(pos);
+	return 0;
+}
+
+int l_mark(lua_State* L) {
+	u64 pos = luaL_checkinteger(L, 1);
+	int color = luaL_checkinteger(L, 2);
+	HashMap_Set(&highlights, &pos, &color);
+	return 0;
+}
+
+int l_unmark(lua_State* L) {
+	u64 pos = luaL_checkinteger(L, 1);
+	HashMap_Remove(&highlights, &pos);
+	return 0;
 }

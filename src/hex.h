@@ -9,6 +9,9 @@ void hexDraw(WINDOW* win, WINDOW* statBar);
 
 
 void getCursorWindowPosition(int* x, int* y);
-void getCursorFilePosition(int* pos);
+void getCursorFilePosition(u64* pos);
+void setCursorPosition(u64 pos);
+
+extern HashMap highlights;
 
 #endif // HEX_H

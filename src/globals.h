@@ -5,6 +5,7 @@
 #include <lua.h>
 #include <lualib.h>
 #include "ArrayList.h"
+#include "HashMap.h"
 
 #define TEXT_BUFFER_SIZE	64
 #define MARGIN_TOP			0
@@ -17,17 +18,22 @@
 
 #define COLOR_INIT_NORMAL()			init_pair(1, COLOR_WHITE, COLOR_BLACK)
 #define COLOR_INIT_CURSOR()			init_pair(2, COLOR_WHITE, COLOR_BLUE)
-#define COLOR_INIT_HIGHLIGHT()		init_pair(3, COLOR_BLACK, COLOR_YELLOW)
-#define COLOR_INIT_CALLER()			init_pair(4, COLOR_GREEN, COLOR_BLACK)
-#define COLOR_INIT_ERROR()			init_pair(5, COLOR_WHITE, COLOR_RED)
-#define COLOR_INIT_WARN()			init_pair(6, COLOR_BLACK, COLOR_YELLOW)
+#define COLOR_INIT_CALLER()			init_pair(3, COLOR_GREEN, COLOR_BLACK)
+#define COLOR_INIT_ERROR()			init_pair(4, COLOR_WHITE, COLOR_RED)
+#define COLOR_INIT_WARN()			init_pair(5, COLOR_BLACK, COLOR_YELLOW)
+#define COLOR_INIT_HIGHLIGHT1()		init_pair(6, COLOR_BLACK, COLOR_YELLOW)
+#define COLOR_INIT_HIGHLIGHT2()		init_pair(7, COLOR_WHITE, COLOR_GREEN)
+#define COLOR_INIT_HIGHLIGHT3()		init_pair(8, COLOR_WHITE, COLOR_RED)
 
 #define COLOR_NORMAL				COLOR_PAIR(1)
 #define COLOR_CURSOR				COLOR_PAIR(2)
-#define COLOR_HIGHLIGHT1			COLOR_PAIR(3)
-#define COLOR_CALLER				COLOR_PAIR(4)
-#define COLOR_ERROR					COLOR_PAIR(5)
-#define COLOR_WARN					COLOR_PAIR(6)
+#define COLOR_CALLER				COLOR_PAIR(3)
+#define COLOR_ERROR					COLOR_PAIR(4)
+#define COLOR_WARN					COLOR_PAIR(5)
+#define COLOR_HIGHLIGHT1			COLOR_PAIR(6)
+#define COLOR_HIGHLIGHT2			COLOR_PAIR(7)
+#define COLOR_HIGHLIGHT3			COLOR_PAIR(8)
+#define COLOR_HIGHLIGHT(h)			COLOR_PAIR(5 + h)
 
 #define HANDLER_C			0
 #define HANDLER_LUA			1
@@ -46,6 +52,11 @@ enum {
 	PLUGIN_SELECTOR,
 	CONSOLE
 };
+
+typedef struct tHighlight {
+	u64 pos;
+	char mode;
+}Highlight;
 
 typedef struct tFileObject {
 	char name[64];
