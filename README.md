@@ -61,25 +61,12 @@ hexo [file [-p luapatch]]
 * Z : Undo
 * Y : Redo
 * S : Save file
-* L : View plugin info
+* L : Toggle plugin enabler/plugin console/hex editor
 * +/- : Increments/Decrements current selection
 * TAB: Switch little/big endian
-* 0-9,A-F : Enables fast overwrite mode
+* 0-9,A-F : Overwrite data
 * F1-F4 : Switch size mode options
-* F5-F8 : Switch color schemes
 * F12 : Quit
 
 ### Plugins
-At the start of the program all `.lua` files in the subdirectory `plugins` are initialized. During that initialization the plugin can activate itself. Deactivated plugins can be activated in the program by pressing *F10* to open the plugin dialog, selecting the plugin using the arrow keys and pressing *Space*. The plugin console can be accessed by pressing *F10* again and is used to debug plugins.
-Aside from initialization a plugin is invoked using callbacks of the following functions:
-
-* `onFileLoad()` - called when a file is loaded
-* `onFileSave()` - called when the loaded file is saved
-
-A plugin can interact with the editor by
-* array `file` that represents the content of the file
-* function `margins(left, right, top, bottom)` that sets margins for the editor
-* function `autoload()` that sets the plugin as active during the initialization process
-* function `getsize()` that returns the file size
-* function `log(str)` that prints `str` to the plugin console 
-* function `getMD5()` that returns a string representing the MD5 hash
+At the start of the program all `.lua` files in the subdirectory `plugins` are initialized. During that initialization the plugin can activate itself. Deactivated plugins can be activated in the program by pressing *L* to open the plugin dialog, selecting the plugin using the arrow keys and pressing *Space*. The plugin console can be accessed by pressing *L* again and is used to debug plugins. Plugins can execute their code using callbacks, menu items and keypresses. For more information view the [plugin documentation](plugins.md).
