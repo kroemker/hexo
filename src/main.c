@@ -86,6 +86,10 @@ int l_getCursorFilePosition(lua_State* L);
 int l_setCursorFilePosition(lua_State* L);
 int l_mark(lua_State* L);
 int l_unmark(lua_State* L);
+int l_getSizeMode(lua_State* L);
+int l_disableInternalKeys(lua_State* L);
+int l_enableInternalKeys(lua_State* L);
+
 
 static char* newfile = "new";
 
@@ -99,6 +103,7 @@ static int sub_menu_orientation = VERTICAL;
 static int sub_menu_cursor = 0;
 static ArrayList subMenuItems;
 static char lastPressedKey[2] = { 0 };
+static int disableKeys = 0;
 
 static WINDOW* win = NULL;
 static WINDOW* menuBar = NULL;
@@ -176,10 +181,10 @@ int main(int argc, char* argv[]) {
 	int c;
 	while (!quit) {
 		c = input();
-		if (mode == HEX_EDITOR) {
+		if (!disableKeys && mode == HEX_EDITOR) {
 			c = hexInput(c, win, statBar);
 		}
-		else if (mode == PLUGIN_SELECTOR) {
+		else if (!disableKeys && mode == PLUGIN_SELECTOR) {
 			c = plugSelInput(c);
 		}
 
@@ -743,6 +748,9 @@ void registerLuaCallables(lua_State* L) {
 	lua_register(L, "setCursorFilePosition", l_setCursorFilePosition);
 	lua_register(L, "mark", l_mark);
 	lua_register(L, "unmark", l_unmark);
+	lua_register(L, "getSizeMode", l_getSizeMode);
+	lua_register(L, "disableInternalKeys", l_disableInternalKeys);
+	lua_register(L, "enableInternalKeys", l_enableInternalKeys);
 
 	luaL_newmetatable(L, "array");
 	lua_pushcfunction(L, l_getContents);
@@ -1020,5 +1028,20 @@ int l_mark(lua_State* L) {
 int l_unmark(lua_State* L) {
 	u64 pos = luaL_checkinteger(L, 1);
 	HashMap_Remove(&highlights, &pos);
+	return 0;
+}
+
+int l_getSizeMode(lua_State* L) {
+	lua_pushinteger(L, sizeMode);
+	return 1;
+}
+
+int l_disableInternalKeys(lua_State* L) {
+	disableKeys = 1;
+	return;
+}
+
+int l_enableInternalKeys(lua_State* L) {
+	disableKeys = 0;
 	return 0;
 }

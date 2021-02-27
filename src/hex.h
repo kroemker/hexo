@@ -13,5 +13,6 @@ void getCursorFilePosition(u64* pos);
 void setCursorPosition(u64 pos);
 
 extern HashMap highlights;
+extern int sizeMode;
 
 #endif // HEX_H

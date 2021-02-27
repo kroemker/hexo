@@ -44,9 +44,10 @@ static long long currentStartAddr;
 
 static char endianness[] = {'B','L'};
 static int  endianMode;
-static int  sizeMode;
 
+int  sizeMode;
 HashMap highlights;
+
 static ArrayList undoList;
 static numUndos = 0;
 static numUndoRedos = 0;
@@ -364,10 +365,12 @@ void hexDraw(WINDOW* win, WINDOW* statBar)
 					//print hex
 					mvwprintw(win, i + tm, lm + 12 + j / sizeMode * (sizeMode * 2 + 1) + k, "%02X", content);
 					//print ascii
-					if ((content <= 0x1F) || (content == 0x7F) || (content == 0xFF)) //control character
+					if ((content <= 0x1F) || (content == 0x7F) || (content == 0xFF)) { //control character
 						mvwaddch(win, i + tm, asciiOffset + j + k / 2, '.');
-					else
+					}
+					else {
 						mvwaddch(win, i + tm, asciiOffset + j + k / 2, content);
+					}
 
 					//cursor + highlight off
 					if ((curX == j) && (curY == i - 2)) {
