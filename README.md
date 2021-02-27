@@ -62,6 +62,8 @@ hexo [file [-p luapatch]]
 * Y : Redo
 * S : Save file
 * L : Toggle plugin enabler/plugin console/hex editor
+* PageUp/PageDown: Move the menu cursor
+* Enter: Execute the selected menu item
 * +/- : Increments/Decrements current selection
 * TAB: Switch little/big endian
 * 0-9,A-F : Overwrite data
